@@ -69,8 +69,19 @@ jobs:
       - name: Build Android Alpha APK
         working-directory: ${{ runner.temp }}/bma
         run: flutter build apk --debug --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp/api/v1
-      - uses: actions/upload-artifact@v4
+      - name: Verify Android Alpha APK
+        run: |
+          test -s "$RUNNER_TEMP/bma/build/app/outputs/flutter-apk/app-debug.apk"
+          sha256sum "$RUNNER_TEMP/bma/build/app/outputs/flutter-apk/app-debug.apk"
+      - name: Upload Android Alpha APK when quota is available
+        id: apk_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
         with:
           name: bma-android-alpha-debug
           path: ${{ runner.temp }}/bma/build/app/outputs/flutter-apk/app-debug.apk
-          retention-days: 14
+          retention-days: 1
+          compression-level: 0
+      - name: Report optional artifact upload failure
+        if: steps.apk_upload.outcome == 'failure'
+        run: echo "::warning::APK build and checksum passed, but GitHub Actions artifact storage is unavailable. Use the signed /bmapp/download release path."
