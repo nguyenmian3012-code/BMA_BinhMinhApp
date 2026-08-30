@@ -3,7 +3,7 @@ WHITEPAPER KIẾN TRÚC VÀ KẾ HOẠCH PHỐI HỢP NƯỚC RÚT
 Version: 1.0
 Ngày khóa phương án: 30/08/2026
 Múi giờ nghiệp vụ: Asia/Ho_Chi_Minh
-Trạng thái: BASELINE ĐÃ CHỐT - CHƯA TRIỂN KHAI MÃ NGUỒN
+Trạng thái: BASELINE V1.0 TẠM PHÊ DUYỆT - ENGINEERING ALPHA ĐANG TRIỂN KHAI
 
 Ghi chú về văn bản
 ------------------
@@ -266,7 +266,7 @@ MỐC 0 - KHÓA PHƯƠNG ÁN (HIỆN TẠI, CHƯA CODE)
 [DONE] Loại bỏ chấm công bằng điện thoại/Wi-Fi/GPS.
 [DONE] Chốt no-AI.
 [DONE] Tạo Whitepaper V1.0.
-[TODO-ANH] Phê duyệt Whitepaper hoặc yêu cầu sửa phiên bản.
+[DONE-ANH] Tạm phê duyệt Whitepaper V1.0 ngày 30/08/2026.
 
 GATE A - QUYỀN TRUY CẬP VÀ MÔI TRƯỜNG
 
@@ -505,4 +505,3 @@ KẾT LUẬN MỘT DÒNG
 BMA sẽ được xây dựng một lần theo kiến trúc Store-ready bền vững: Flutter native,
 BMA Core độc lập, PostgreSQL, Gateway outbox, Entry/Exit độc lập và no-AI; team
 chạy nước rút theo Gate, không dùng deadline để hợp thức hóa giải pháp tạm bợ.
-
