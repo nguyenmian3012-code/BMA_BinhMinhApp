@@ -9,11 +9,11 @@ namespace Bma.Pages.Admin;
 [Authorize]
 public sealed class LogoutModel : PageModel
 {
-    public IActionResult OnGet() => Redirect("/bmapp/admin");
+    public IActionResult OnGet() => RedirectToPage("/Admin/Index");
 
     public async Task<IActionResult> OnPostAsync()
     {
         await HttpContext.SignOutAsync(BmaAuthSchemes.Cookie);
-        return Redirect("/bmapp/admin/login");
+        return RedirectToPage("/Admin/Login");
     }
 }

@@ -38,6 +38,7 @@ class ApiClient {
   final SessionStore sessionStore;
   final http.Client _client;
   final String baseUrl;
+  static const _cachePrefix = 'bma_cache_';
   SessionData? _session;
   bool _refreshing = false;
 
@@ -78,6 +79,7 @@ class ApiClient {
       },
       authenticated: false,
     );
+    await _clearResponseCache();
     await _saveTokens(response);
     return response;
   }
@@ -97,11 +99,12 @@ class ApiClient {
     }
     _session = null;
     await sessionStore.clear();
+    await _clearResponseCache();
   }
 
   Future<CachedResponse> getCached(String path) async {
     final preferences = await SharedPreferences.getInstance();
-    final cacheKey = Uri.encodeComponent('$baseUrl$path');
+    final cacheKey = '$_cachePrefix${Uri.encodeComponent('$baseUrl$path')}';
     final etagKey = '${cacheKey}_etag';
     final bodyKey = '${cacheKey}_body';
     final headers = <String, String>{};
@@ -242,6 +245,7 @@ class ApiClient {
       if (response.statusCode == HttpStatus.unauthorized) {
         _session = null;
         await sessionStore.clear();
+        await _clearResponseCache();
         return false;
       }
       _ensureSuccess(response);
@@ -264,6 +268,12 @@ class ApiClient {
     );
     _session = session;
     await sessionStore.write(session);
+  }
+
+  Future<void> _clearResponseCache() async {
+    final preferences = await SharedPreferences.getInstance();
+    final keys = preferences.getKeys().where((key) => key.startsWith(_cachePrefix));
+    await Future.wait(keys.map(preferences.remove));
   }
 
   static void _ensureSuccess(http.Response response) {

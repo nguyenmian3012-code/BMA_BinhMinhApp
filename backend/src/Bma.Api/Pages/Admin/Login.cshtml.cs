@@ -5,17 +5,19 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Bma.Pages.Admin;
 
 [AllowAnonymous]
+[EnableRateLimiting("auth")]
 public sealed class LoginModel(AuthService auth) : PageModel
 {
     [BindProperty] public LoginInput Input { get; set; } = new();
     [BindProperty(SupportsGet = true)] public string? ReturnUrl { get; set; }
 
     public IActionResult OnGet() => User.Identity?.IsAuthenticated == true
-        ? Redirect("/bmapp/admin") : Page();
+        ? RedirectToPage("/Admin/Index") : Page();
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
@@ -36,7 +38,7 @@ public sealed class LoginModel(AuthService auth) : PageModel
         await HttpContext.SignInAsync(BmaAuthSchemes.Cookie,
             new ClaimsPrincipal(new ClaimsIdentity(claims, BmaAuthSchemes.Cookie)),
             new AuthenticationProperties { IsPersistent = true, AllowRefresh = true });
-        return LocalRedirect(IsLocal(ReturnUrl) ? ReturnUrl! : "/bmapp/admin");
+        return IsLocal(ReturnUrl) ? LocalRedirect(ReturnUrl!) : RedirectToPage("/Admin/Index");
     }
 
     private static bool IsLocal(string? value) => value is not null && value.StartsWith('/') &&

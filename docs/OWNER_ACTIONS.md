@@ -11,14 +11,21 @@
 
 - Tạo database/user PostgreSQL staging và đặt secret trực tiếp trên host.
 - Cấp route `/bmapp-staging/*` trong Cloudflare Tunnel.
+- Đặt `BMA_PATH_BASE=/bmapp-staging` cho container staging; production giữ
+  `BMA_PATH_BASE=/bmapp`.
 - Đặt `Gateway__InboundKey` giống nhau ở Gateway và BMA staging.
-- Chạy health check và gửi lại status code/body đã che thông tin nhạy cảm.
+- Chạy `infra/scripts/health-check.ps1 -BaseUrl http://localhost:8791
+  -PathBase /bmapp-staging` và gửi lại output không chứa secret.
 
 ## Trước Android Alpha
 
 - Bật Developer options và USB debugging.
 - Cắm cáp, chấp nhận fingerprint máy phát triển.
-- Cài APK từ GitHub Actions artifact và test login/session/notification UI.
+- Nếu quota cho phép, dùng GitHub Actions artifact để test nhanh; đây không phải
+  kênh phát hành chính.
+- Nếu artifact không có, build APK Alpha đã ký trên máy kiểm soát, ghi SHA-256,
+  chép lên MinhComp và tải qua HTTPS `/bmapp/download`.
+- Cài APK và test login, giữ session, 5 trang chính và inbox thông báo.
 
 ## Trước iOS/TestFlight
 

@@ -12,6 +12,8 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_EnableDiagnostics=0
 COPY --from=build /app/publish .
+RUN mkdir -p /home/app/.aspnet/DataProtection-Keys \
+    && chown -R app:app /home/app/.aspnet
 USER app
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Bma.Api.dll"]

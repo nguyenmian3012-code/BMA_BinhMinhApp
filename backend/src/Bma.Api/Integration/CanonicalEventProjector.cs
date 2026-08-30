@@ -74,8 +74,11 @@ public sealed class CanonicalEventProjector(BmaDbContext db, IOptions<PlantOptio
         row.SourceEventId = raw.EventId;
 
         var states = await db.MotorStateProjections.ToListAsync(ct);
-        var input = states.SingleOrDefault(x => x.Position == "INPUT");
-        var output = states.SingleOrDefault(x => x.Position == "OUTPUT");
+        // A newly added projection is not visible to the database query until SaveChanges.
+        // Include the current tracked row so the first event from the second motor can
+        // immediately produce STARTING/RUNNING/DRAINING/STOPPED instead of UNKNOWN.
+        var input = position == "INPUT" ? row : states.SingleOrDefault(x => x.Position == "INPUT");
+        var output = position == "OUTPUT" ? row : states.SingleOrDefault(x => x.Position == "OUTPUT");
         var projected = PlantStateCalculator.Calculate(input, output, changedAt,
             plant.HeartbeatStaleSeconds);
         var open = await db.PlantStatePeriods.SingleOrDefaultAsync(x => x.EndedAt == null, ct);

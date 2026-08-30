@@ -1,5 +1,7 @@
 # Merge these rules into the existing cloudflared config on MinhComp.
 # Keep /api/motornode and /api/bmkcslab rules before the final catch-all.
+# The staging container must use App__PathBase=/bmapp-staging; production uses
+# App__PathBase=/bmapp. cloudflared forwards the original path without rewriting.
 ingress:
   - hostname: gateway.abmtlab.com
     path: /bmapp-staging/*

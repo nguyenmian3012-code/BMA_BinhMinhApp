@@ -37,10 +37,16 @@ public sealed class AuthService(
         string? employeeCode,
         CancellationToken ct)
     {
-        var normalized = Normalize(username);
-        if (normalized.Length is < 3 or > 64 || password.Length is < 10 or > 200)
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password) ||
+            string.IsNullOrWhiteSpace(displayName))
             return (false, null);
-        if (await db.AppUsers.AnyAsync(x => x.NormalizedUserName == normalized, ct))
+        var normalized = Normalize(username);
+        var employee = NullIfWhiteSpace(employeeCode);
+        if (normalized.Length is < 3 or > 64 || password.Length is < 10 or > 200 ||
+            displayName.Trim().Length > 120 || employee?.Length > 64)
+            return (false, null);
+        if (await db.AppUsers.AnyAsync(x => x.NormalizedUserName == normalized ||
+            employee != null && x.EmployeeCode == employee, ct))
             return (false, null);
 
         var user = new AppUser
@@ -48,15 +54,24 @@ public sealed class AuthService(
             UserName = username.Trim(),
             NormalizedUserName = normalized,
             DisplayName = displayName.Trim(),
-            EmployeeCode = NullIfWhiteSpace(employeeCode),
+            EmployeeCode = employee,
             PasswordHash = ""
         };
         user.PasswordHash = hasher.HashPassword(user, password);
         db.AppUsers.Add(user);
         audit.Add("ACCOUNT_REGISTERED", "USER", user.Id.ToString(), user.Id,
             after: new { user.UserName, user.DisplayName, user.EmployeeCode, user.Status });
-        await db.SaveChangesAsync(ct);
-        return (true, user);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return (true, user);
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent registration can win either unique index after the
+            // pre-check. Return the same conflict response instead of HTTP 500.
+            return (false, null);
+        }
     }
 
     public async Task<LoginOutcome> LoginAsync(
@@ -96,15 +111,26 @@ public sealed class AuthService(
         string? ipAddress,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(rawToken)) return null;
         var hash = Hash(rawToken);
-        var session = await db.RefreshSessions.Include(x => x.User)
-            .SingleOrDefaultAsync(x => x.TokenHash == hash, ct);
-        if (session?.User is null) return null;
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // Serialize rotation for one refresh token. Without a row lock, two
+        // simultaneous requests can both mint a valid successor before either
+        // request marks the original token as rotated.
+        var session = await db.RefreshSessions
+            .FromSqlInterpolated($"SELECT * FROM refresh_sessions WHERE token_hash = {hash} FOR UPDATE")
+            .SingleOrDefaultAsync(ct);
+        if (session is null) return null;
+        session.User = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == session.UserId, ct);
+        if (session.User is null) return null;
 
         if (session.RevokedAt is not null)
         {
             if (session.ReplacedByHash is not null)
+            {
                 await RevokeFamilyAsync(session.TokenFamily, "REFRESH_TOKEN_REUSE", ct);
+                await transaction.CommitAsync(ct);
+            }
             return null;
         }
 
@@ -113,6 +139,7 @@ public sealed class AuthService(
             session.RevokedAt = DateTimeOffset.UtcNow;
             session.RevocationReason = "EXPIRED_OR_USER_DISABLED";
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
             return null;
         }
 
@@ -123,11 +150,13 @@ public sealed class AuthService(
         session.ReplacedByHash = Hash(tokens.RefreshToken);
         audit.Add("REFRESH_ROTATED", "SESSION", session.Id.ToString(), session.UserId);
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return tokens;
     }
 
     public async Task RevokeAsync(Guid userId, string rawToken, string reason, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(rawToken)) return;
         var hash = Hash(rawToken);
         var session = await db.RefreshSessions.SingleOrDefaultAsync(
             x => x.UserId == userId && x.TokenHash == hash, ct);
@@ -155,6 +184,7 @@ public sealed class AuthService(
 
     private async Task<AppUser?> FindAndVerifyAsync(string username, string password, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)) return null;
         var user = await db.AppUsers.SingleOrDefaultAsync(
             x => x.NormalizedUserName == Normalize(username), ct);
         if (user is null) return null;

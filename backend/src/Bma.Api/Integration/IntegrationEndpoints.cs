@@ -4,7 +4,7 @@ public static class IntegrationEndpoints
 {
     public static IEndpointRouteBuilder MapBmaIntegration(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/bmapp/api/v1/integrations/events", async (
+        endpoints.MapPost("/api/v1/integrations/events", async (
             CanonicalEvent message,
             HttpContext http,
             IntegrationIngestionService ingestion,
@@ -25,7 +25,7 @@ public static class IntegrationEndpoints
                     { status = "DUPLICATE", raw_event_id = result.RawEventId }),
                 _ => Results.UnprocessableEntity(new { error = result.Error })
             };
-        }).AllowAnonymous().WithTags("Integration");
+        }).AllowAnonymous().RequireRateLimiting("integration").WithTags("Integration");
 
         return endpoints;
     }

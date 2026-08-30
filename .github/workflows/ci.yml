@@ -28,6 +28,20 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bma_ci
+          POSTGRES_USER: bma_ci
+          POSTGRES_PASSWORD: bma_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bma_ci -d bma_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -39,6 +53,79 @@ jobs:
         run: dotnet build backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-restore
       - name: Test
         run: dotnet test backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage"
+      - name: Runtime smoke test under configured PathBase
+        env:
+          ASPNETCORE_URLS: http://127.0.0.1:8790
+          App__PathBase: /bmapp-ci
+          ConnectionStrings__Bma: Host=127.0.0.1;Port=5432;Database=bma_ci;Username=bma_ci;Password=bma_ci_only
+          Jwt__SigningKey: ci-only-signing-key-at-least-32-bytes-long
+          Gateway__InboundKey: ci-only-gateway-key
+          BMA_BOOTSTRAP_ADMIN_USERNAME: ci-admin
+          BMA_BOOTSTRAP_ADMIN_PASSWORD: ci-only-bootstrap-password
+        run: |
+          dotnet run --project backend/src/Bma.Api/Bma.Api.csproj --configuration Release --no-build > /tmp/bma-ci.log 2>&1 &
+          bma_pid=$!
+          trap 'kill "$bma_pid" 2>/dev/null || true; cat /tmp/bma-ci.log' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health >/dev/null; then break; fi
+            if ! kill -0 "$bma_pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health >/dev/null
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/admin/login | grep --quiet "BMA Admin"
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/css/admin.css | grep --quiet "background:#7b1015"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8790/health)" = "404"
+
+          login_json=$(curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --data '{"username":"ci-admin","password":"ci-only-bootstrap-password","device_name":"CI"}' \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/auth/login)
+          access_token=$(printf '%s' "$login_json" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+          refresh_token=$(printf '%s' "$login_json" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p')
+          test -n "$access_token"
+          test -n "$refresh_token"
+
+          occurred_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          input_payload="{\"motor_id\":\"BM-INPUT-CONVEYOR\",\"position\":\"INPUT\",\"state\":\"ON\",\"heartbeat_at\":\"$occurred_at\"}"
+          input_hash=$(printf '%s' "$input_payload" | sha256sum | cut -d' ' -f1)
+          curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'X-BMA-Gateway-Key: ci-only-gateway-key' \
+            --header 'Idempotency-Key: ci-input-1' \
+            --data "{\"event_id\":\"ci-input-1\",\"event_type\":\"MOTOR_STATE_CHANGED\",\"source_system\":\"MOTORNODE\",\"source_device_id\":\"M1P-INPUT-001\",\"sequence\":1,\"occurred_at\":\"$occurred_at\",\"schema_version\":\"1.0\",\"correlation_id\":\"ci-smoke\",\"payload\":$input_payload,\"payload_hash\":\"$input_hash\",\"signature\":null}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/integrations/events >/dev/null
+
+          output_payload="{\"motor_id\":\"BM-OUTPUT-CONVEYOR\",\"position\":\"OUTPUT\",\"state\":\"OFF\",\"heartbeat_at\":\"$occurred_at\"}"
+          output_hash=$(printf '%s' "$output_payload" | sha256sum | cut -d' ' -f1)
+          curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'X-BMA-Gateway-Key: ci-only-gateway-key' \
+            --header 'Idempotency-Key: ci-output-1' \
+            --data "{\"event_id\":\"ci-output-1\",\"event_type\":\"MOTOR_STATE_CHANGED\",\"source_system\":\"MOTORNODE\",\"source_device_id\":\"M1P-OUTPUT-001\",\"sequence\":1,\"occurred_at\":\"$occurred_at\",\"schema_version\":\"1.0\",\"correlation_id\":\"ci-smoke\",\"payload\":$output_payload,\"payload_hash\":\"$output_hash\",\"signature\":null}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/integrations/events >/dev/null
+
+          for attempt in {1..15}; do
+            dashboard=$(curl --fail --silent \
+              --header "Authorization: Bearer $access_token" \
+              http://127.0.0.1:8790/bmapp-ci/api/v1/dashboard)
+            if printf '%s' "$dashboard" | grep --quiet '"plant_state":"STARTING"' && \
+               printf '%s' "$dashboard" | grep --quiet '"running_since":"'; then break; fi
+            sleep 1
+          done
+          printf '%s' "$dashboard" | grep --quiet '"plant_state":"STARTING"'
+          printf '%s' "$dashboard" | grep --quiet '"running_since":"'
+
+          refresh_pids=""
+          for slot in 1 2; do
+            (curl --silent --output "/tmp/refresh-$slot.json" --write-out '%{http_code}' \
+              --request POST --header 'Content-Type: application/json' \
+              --data "{\"refresh_token\":\"$refresh_token\",\"device_name\":\"CI\"}" \
+              http://127.0.0.1:8790/bmapp-ci/api/v1/auth/refresh > "/tmp/refresh-$slot.status") &
+            refresh_pids="$refresh_pids $!"
+          done
+          for refresh_pid in $refresh_pids; do wait "$refresh_pid"; done
+          refresh_statuses=$(sort -n /tmp/refresh-*.status | paste -sd, -)
+          test "$refresh_statuses" = "200,401"
       - name: Build production container
         run: docker build --file backend/Dockerfile --tag bma-core:ci .
 

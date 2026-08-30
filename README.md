@@ -63,6 +63,10 @@ docker compose --env-file .env up --build
 Invoke-RestMethod http://localhost:8790/bmapp/health
 ```
 
+`BMA_PATH_BASE` phải khớp route Cloudflare. Dùng `/bmapp` cho production và
+`/bmapp-staging` cho staging; backend, Admin và static assets dùng chung prefix
+này thay vì hard-code đường dẫn.
+
 ## Chạy Flutter local
 
 Yêu cầu: Flutter stable và Android SDK. Lần đầu cần tạo platform shell:

@@ -11,7 +11,7 @@ public static class ApiEndpoints
 {
     public static IEndpointRouteBuilder MapBmaReadApi(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/bmapp/api/v1").RequireAuthorization().WithTags("Mobile");
+        var group = endpoints.MapGroup("/api/v1").RequireAuthorization().WithTags("Mobile");
 
         group.MapGet("/dashboard", async (DashboardService service, CancellationToken ct) =>
             EtagResults.Json(await service.GetAsync(ct)));
@@ -35,7 +35,10 @@ public static class ApiEndpoints
                     x.ExtraValue,
                     freshness = x.MeasuredAt >= DateTimeOffset.UtcNow.AddHours(-4) ? "FRESH" : "STALE"
                 }).ToListAsync(ct);
-            return EtagResults.Json(new { items = rows, generated_at = DateTimeOffset.UtcNow });
+            var snapshotAt = rows.Count == 0
+                ? (DateTimeOffset?)null
+                : rows.Max(x => x.MeasuredAt);
+            return EtagResults.Json(new { items = rows, generated_at = snapshotAt });
         });
 
         group.MapGet("/recovery/latest", async (RecoveryService service, CancellationToken ct) =>

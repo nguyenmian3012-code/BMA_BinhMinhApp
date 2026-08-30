@@ -14,7 +14,8 @@ public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapBmaAuth(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/bmapp/api/v1/auth").WithTags("Authentication");
+        var group = endpoints.MapGroup("/api/v1/auth").WithTags("Authentication")
+            .RequireRateLimiting("auth");
 
         group.MapPost("/register", async (RegisterRequest request, AuthService auth, CancellationToken ct) =>
         {

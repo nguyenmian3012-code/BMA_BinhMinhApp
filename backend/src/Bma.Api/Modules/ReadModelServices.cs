@@ -94,11 +94,11 @@ public sealed class RecoveryService(BmaDbContext db)
 {
     public async Task<RecoveryReadModel> GetLatestAsync(CancellationToken ct)
     {
-        var now = DateTimeOffset.UtcNow;
         var latest = await db.ProductionMassReadings.AsNoTracking()
             .Where(x => x.Approved).OrderByDescending(x => x.RecordedAt).FirstOrDefaultAsync(ct);
         if (latest is null)
-            return new("INSUFFICIENT_DATA", null, null, null, null, null, null, now);
+            return new("INSUFFICIENT_DATA", null, null, null, null, null, null,
+                DateTimeOffset.UnixEpoch);
         var rows = await db.ProductionMassReadings.AsNoTracking()
             .Where(x => x.Approved && x.PeriodId == latest.PeriodId &&
                         x.Basis == latest.Basis && x.FormulaVersion == latest.FormulaVersion)
@@ -108,8 +108,9 @@ public sealed class RecoveryService(BmaDbContext db)
         if (input <= 0 || output <= 0)
             return new("INSUFFICIENT_DATA", null, latest.PeriodId,
                 latest.Basis.ToString().ToUpperInvariant(), latest.FormulaVersion,
-                input > 0 ? input : null, output > 0 ? output : null, now);
+                input > 0 ? input : null, output > 0 ? output : null, latest.RecordedAt);
         return new("AVAILABLE", Math.Round(output / input * 100m, 2), latest.PeriodId,
-            latest.Basis.ToString().ToUpperInvariant(), latest.FormulaVersion, input, output, now);
+            latest.Basis.ToString().ToUpperInvariant(), latest.FormulaVersion, input, output,
+            latest.RecordedAt);
     }
 }
