@@ -197,7 +197,7 @@ class ApiClient {
       if (response.statusCode == HttpStatus.unauthorized && retryAfterRefresh) {
         final refreshed = await _refresh();
         if (refreshed) {
-          return _send(
+          return await _send(
             method,
             path,
             headers: headers,
