@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gateway.abmtlab.com/contracts/bma/quality-result-published-v1.schema.json",
+  "title": "Quality Result Published Payload V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "result_id",
+    "lot_code",
+    "measured_at",
+    "ph",
+    "whiteness",
+    "moisture"
+  ],
+  "properties": {
+    "result_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "lot_code": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "measured_at": { "type": "string", "format": "date-time" },
+    "ph": { "type": "number", "minimum": 0, "maximum": 14 },
+    "whiteness": { "type": "number", "minimum": 0, "maximum": 100 },
+    "moisture": { "type": "number", "minimum": 0, "maximum": 100 },
+    "fineness": { "type": ["number", "null"], "minimum": 0 },
+    "fineness_unit": { "type": ["string", "null"], "maxLength": 20 },
+    "viscosity": { "type": ["number", "null"] },
+    "viscosity_unit": { "type": ["string", "null"], "maxLength": 20 },
+    "extra_value": { "type": ["number", "null"] },
+    "product_code": { "type": ["string", "null"], "maxLength": 20 },
+    "operator_code": { "type": ["string", "null"], "maxLength": 20 },
+    "quality_code": { "type": ["string", "null"], "maxLength": 20 },
+    "customer_code": { "type": ["string", "null"], "maxLength": 30 }
+  }
+}

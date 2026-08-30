@@ -1,0 +1,76 @@
+name: BMA CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bma-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate contracts and payload hashes
+        run: node infra/scripts/validate-contracts.mjs
+      - name: Scan tracked files for credentials
+        run: bash infra/scripts/secret-scan.sh
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj
+      - name: Build
+        run: dotnet build backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-restore
+      - name: Test
+        run: dotnet test backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage"
+      - name: Build production container
+        run: docker build --file backend/Dockerfile --tag bma-core:ci .
+
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create disposable Android shell
+        run: |
+          flutter create --platforms=android --org com.binhminh --project-name bma "$RUNNER_TEMP/bma"
+          rm -rf "$RUNNER_TEMP/bma/lib" "$RUNNER_TEMP/bma/test"
+          cp -R mobile/lib "$RUNNER_TEMP/bma/lib"
+          cp -R mobile/test "$RUNNER_TEMP/bma/test"
+          cp mobile/pubspec.yaml mobile/analysis_options.yaml "$RUNNER_TEMP/bma/"
+      - name: Resolve packages
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter pub get
+      - name: Analyze
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter analyze --fatal-infos
+      - name: Test
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter test
+      - name: Build Android Alpha APK
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter build apk --debug --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp/api/v1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bma-android-alpha-debug
+          path: ${{ runner.temp }}/bma/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14

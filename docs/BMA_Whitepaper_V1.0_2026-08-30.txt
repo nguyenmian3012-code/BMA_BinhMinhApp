@@ -1,0 +1,508 @@
+BINH MINH APP (BMA)
+WHITEPAPER KIẾN TRÚC VÀ KẾ HOẠCH PHỐI HỢP NƯỚC RÚT
+Version: 1.0
+Ngày khóa phương án: 30/08/2026
+Múi giờ nghiệp vụ: Asia/Ho_Chi_Minh
+Trạng thái: BASELINE ĐÃ CHỐT - CHƯA TRIỂN KHAI MÃ NGUỒN
+
+Ghi chú về văn bản
+------------------
+Đây là tài liệu gốc để điều phối dự án Binh Minh App. Mọi thay đổi kiến trúc,
+phạm vi hoặc quy tắc nghiệp vụ quan trọng phải được ghi thành phiên bản mới và
+có changelog. Không thay đổi âm thầm một quyết định đã khóa.
+
+Chủ sản phẩm/người phê duyệt nghiệp vụ: Bình Minh - anh Minh An
+Đối tác phân tích, triển khai và kiểm thử kỹ thuật: Codex
+
+
+1. TUYÊN BỐ MỤC TIÊU
+====================
+
+BMA là ứng dụng chính thức của Bình Minh cho Android và iOS, được thiết kế ngay
+từ đầu để có thể đưa lên Google Play và Apple App Store. Bản alpha có thể được
+cài ngoài Store trong giai đoạn thử nghiệm, nhưng không dùng kiến trúc tạm bợ.
+
+BMA hoạt động hoàn toàn không cần AI. Nếu OpenClaw, 9Router hoặc bất kỳ dịch vụ
+AI nào ngừng, BMA vẫn phải hoạt động bình thường.
+
+Năm nhóm chức năng chính:
+
+1) Tình hình hoạt động chung của nhà máy và lịch chạy tương lai.
+2) Chất lượng sản phẩm và tỷ lệ thu hồi hiện thời.
+3) Chấm công riêng cho từng công nhân viên.
+4) Vai trò, trách nhiệm, nghĩa vụ, quyền lợi và trọng trách của từng nhân viên.
+5) Thông báo chung cho toàn công ty, bộ phận, vai trò hoặc cá nhân.
+
+
+2. CÁC QUYẾT ĐỊNH ĐÃ KHÓA
+=========================
+
+2.1 Mobile
+
+- Flutter native, một codebase cho Android và iOS.
+- Bản Android alpha có thể phát hành APK nội bộ.
+- Bản iOS thử nghiệm qua TestFlight khi tài khoản Apple và signing sẵn sàng.
+- Đích đến lâu dài là Google Play và Apple App Store.
+- Không phát triển một PWA riêng rồi viết lại native sau.
+
+2.2 Backend
+
+- BMA Core là một dịch vụ độc lập với ABMT AI Core/OpenClaw.
+- ASP.NET Core .NET 10 LTS.
+- Kiến trúc modular monolith; không chia microservice khi chưa có nhu cầu thật.
+- Trang Admin dùng Razor Pages trong cùng BMA Core.
+- PostgreSQL là cơ sở dữ liệu trung tâm.
+- REST API versioned và push notification qua FCM/APNs.
+
+2.3 Routing và hosting
+
+- Tái sử dụng máy host hiện tại và Cloudflare Tunnel.
+- gateway.abmtlab.com vẫn là biên public thống nhất.
+- Đề xuất routing:
+  /api/motornode/*   -> ABMT Core/MotorNode hiện tại
+  /api/bmkcslab/*    -> ABMT Core/BMKCS hiện tại
+  /bmapp/api/*       -> BMA Core
+  /bmapp/admin/*     -> BMA Admin
+  /bmapp/health      -> BMA health check
+- BMA có vòng đời deploy riêng; update agent/AI không được làm BMA ngừng.
+
+2.4 Tích hợp dữ liệu
+
+- MotorNode và BMKCS vẫn là nguồn ghi nhận gốc của chúng.
+- BMA không scrape HTML từ /motornode hoặc /bmkcs.
+- Gateway lưu sự kiện bền vững, ghi integration outbox trong cùng transaction,
+  sau đó gửi canonical event sang BMA.
+- Mỗi event có định danh ổn định và được xử lý idempotent.
+- API đọc history/cursor tồn tại để reconcile/repair, không polling liên tục làm
+  luồng chính.
+
+2.5 Chấm công
+
+- Điện thoại cá nhân, Wi-Fi, GPS và movement KHÔNG được dùng để xác định vào/ra.
+- Một hệ thống độc lập sẽ phát EMPLOYEE_ENTRY và EMPLOYEE_EXIT.
+- BMA chỉ tiếp nhận, đối chiếu, tạo ca làm việc đề xuất và audit.
+- Sự kiện gốc là immutable. Điều chỉnh là một event mới, có lý do, người tạo và
+  người phê duyệt.
+- Bảng lương chỉ dùng ca chấm công đã được duyệt.
+
+2.6 Nguyên tắc viết mã
+
+- Giải pháp đúng và ngắn nhất được ưu tiên.
+- Nếu một dòng code rõ ràng giải quyết đúng vấn đề, không viết 15 dòng ceremony.
+- Không dùng Kubernetes, Kafka, Redis, GraphQL, CQRS framework hoặc abstraction
+  nặng nếu chưa có một nhu cầu đo được.
+- Không đánh đổi durability, idempotency, bảo mật, audit hoặc test để giảm số dòng.
+
+
+3. KIẾN TRÚC LOGIC
+==================
+
+Nguồn dữ liệu hiện có:
+
+- M1P INPUT/OUTPUT -> gateway.abmtlab.com/api/motornode/events
+- BMKCS LabStation -> gateway.abmtlab.com/api/bmkcslab/v1/results
+- Dashboard tham khảo -> gateway.abmtlab.com/motornode và /bmkcs
+
+Nguồn tương lai:
+
+- Hệ thống Entry/Exit độc lập -> BMA Integration API
+- Nguồn khối lượng khoai đầu vào/tinh bột đầu ra -> Production Metrics adapter
+
+Luồng xử lý chuẩn:
+
+1) Nguồn tạo event và lưu local trước nếu có thể.
+2) Nguồn/Gateway gửi event kèm event_id, source_id, sequence và occurred_at.
+3) BMA xác thực nguồn, kiểm tra idempotency và lưu raw event bất biến.
+4) Projection worker tạo trạng thái hiện tại, ca chạy, bảng công và metric.
+5) Flutter/Admin đọc projection; không sửa raw event.
+6) Điều chỉnh tạo adjustment event và audit log.
+
+Thành phần triển khai tối thiểu:
+
+- BMA Mobile (Flutter)
+- BMA Core API + background workers (.NET 10)
+- BMA Admin (Razor Pages trong BMA Core)
+- PostgreSQL
+- Cloudflare Tunnel/routing
+- Gateway Integration Outbox
+- FCM/APNs push adapter
+- Backup + health + structured logs
+
+
+4. ĐẶC TẢ CHỨC NĂNG CẤP CAO
+============================
+
+4.1 Trang Tổng quan
+
+- Nhà máy: STARTING, RUNNING, DRAINING, STOPPED hoặc UNKNOWN.
+- INPUT ON là bắt đầu nạp liệu.
+- INPUT OFF không đồng nghĩa nhà máy đã dừng.
+- OUTPUT OFF sau khi INPUT đã OFF mới có thể đóng ca sau grace/debounce.
+- Mất heartbeat -> UNKNOWN, không tự kết luận STOPPED.
+- Hiện lần khởi động gần nhất, thời gian đang chạy, lần dừng gần nhất.
+- Tổng giờ tháng và phân bổ giờ cao điểm/bình thường/thấp điểm.
+- Lịch chạy tiếp theo, trạng thái planned/confirmed/cancelled.
+
+4.2 Chất lượng
+
+- Chỉ hiện kết quả BMKCS đã Publish.
+- pH, độ trắng, độ ẩm, độ mịn, lot code và thời điểm đo.
+- Độ mịn là field riêng; không đổi tên viscosity và không làm sai nghĩa extra_value.
+- Mỗi metric có unit, precision, threshold và formula versioned.
+- Hiện freshness; dữ liệu cũ phải được đánh dấu rõ.
+
+4.3 Tỷ lệ thu hồi
+
+- M1-P chỉ cho ON/OFF, không được dùng để suy ra sản lượng.
+- Cần khối lượng khoai đầu vào và tinh bột thành phẩm cùng period/basis.
+- Công thức có version và ngày hiệu lực.
+- Hiện tỷ lệ ca/ngày/tháng, source timestamp và basis ướt/khô.
+- Thiếu dữ liệu -> "Chưa đủ dữ liệu", không hiện 0 và không ước đoán.
+
+4.4 Chấm công
+
+- Event tối thiểu: event_id, employee_id, ENTRY/EXIT, occurred_at, received_at,
+  source_system, source_device_id, sequence, evidence_ref, payload_hash/signature.
+- Kiểm tra cặp ENTRY/EXIT, sự kiện thiếu, trùng, đảo thứ tự và trễ.
+- Tạo attendance session: PROVISIONAL, CONFIRMED, NEEDS_REVIEW.
+- Nhân viên xem dữ liệu của mình và gửi yêu cầu điều chỉnh.
+- Quản lý/HR phê duyệt trước khi đưa vào kỳ lương.
+
+4.5 Hồ sơ nhân viên
+
+- Mã nhân viên, họ tên, bộ phận, vị trí, quản lý trực tiếp.
+- Vai trò hệ thống tách khỏi chức danh công việc.
+- Trách nhiệm, nghĩa vụ, quyền lợi, trọng trách và ngày hiệu lực.
+- Tất cả thay đổi quan trọng có version và audit.
+- Nhân viên chỉ xem hồ sơ của mình; HR/Admin theo phân quyền.
+
+4.6 Thông báo
+
+- Toàn công ty/bộ phận/vai trò/cá nhân.
+- Thông báo kế hoạch chạy, thay đổi/hủy lịch, thông báo khẩn.
+- Push kèm inbox trong app; có read/unread và thời điểm đã đọc.
+
+
+5. MÔI TRƯỜNG LÀM VIỆC CẦN CÓ
+==============================
+
+5.1 Môi trường tài liệu và điều phối
+
+- Whitepaper này là baseline.
+- ChatGPT Work/Codex dùng để phân tích, tạo artifact, viết/kiểm thử code khi được
+  phép và điều phối checkpoint.
+- Decision log, API contract và runbook nằm trong repository /docs.
+
+5.2 Source control
+
+- Một private GitHub repository riêng cho BMA; đề xuất tên: Binh-Minh-App.
+- Cấu trúc đề xuất khi bắt đầu code:
+  /mobile      Flutter
+  /backend     BMA Core + Admin
+  /contracts   API/event schemas
+  /infra       deploy/config templates
+  /docs        whitepaper, ADR, runbook, test plan
+- Branch bảo vệ:
+  main         bản đã được chấp nhận
+  develop      tích hợp alpha/beta
+  feature/*    thay đổi có phạm vi nhỏ
+- Không commit secret, mật khẩu, station key hoặc signing key.
+
+5.3 Máy phát triển Windows của anh
+
+- Windows 10 Pro 64-bit trên HP ZBook Studio G3.
+- Git/GitHub CLI hoặc GitHub Desktop.
+- Visual Studio với .NET 10 SDK.
+- Flutter stable + Android Studio/Android SDK.
+- VS Code tùy chọn cho Flutter.
+- Docker Desktop cho PostgreSQL local/staging nếu ổn định trên máy.
+- PowerShell để chạy health check và scripts.
+
+5.4 Android
+
+- Samsung Fold 7/S24 Ultra có thể làm thiết bị pilot.
+- Bật Developer options + USB debugging khi build/test bắt đầu.
+- Giai đoạn alpha: APK signed nội bộ.
+- Giai đoạn beta/production: Google Play Console closed testing -> production.
+
+5.5 iOS
+
+- Cần Mac có Xcode hoặc macOS CI để build/sign.
+- Cần Apple Developer account, App Store Connect và APNs key.
+- Cần ít nhất một iPhone thật để test notification, session và UI.
+- Giai đoạn beta: TestFlight; sau đó App Store review.
+- Đây là blocker thủ công/bên ngoài; Windows không thay thế được Xcode signing.
+
+5.6 Backend local, staging và production
+
+- Local development: BMA Core trên một port riêng, đề xuất 8790; PostgreSQL dev.
+- Không dùng 8787 vì đây là ABMT Core; 8788 từng được dùng cho dev gateway.
+- Staging: database riêng, secret riêng, dữ liệu synthetic/anonymized.
+- Production: database riêng, secret production, backup tự động, health check.
+- Đề xuất URL:
+  Staging    https://gateway.abmtlab.com/bmapp-staging
+  Production https://gateway.abmtlab.com/bmapp
+
+5.7 Push và Store
+
+- Firebase project chỉ dùng FCM; không dùng Firebase Database/Auth.
+- Apple APNs key được quản lý trong tài khoản Apple của Bình Minh.
+- Google Play signing và Apple signing key không đưa vào chat/source control.
+
+5.8 Hệ thống Entry/Exit tương lai
+
+- Có local persistence/outbox.
+- Đồng hồ thời gian đúng; event có source timestamp và sequence.
+- Có station/device credential riêng.
+- Có API contract và acceptance test độc lập trước khi nối với bảng lương.
+
+
+6. ROADMAP NƯỚC RÚT ĐỂ THEO DÕI
+===============================
+
+MỐC 0 - KHÓA PHƯƠNG ÁN (HIỆN TẠI, CHƯA CODE)
+
+[DONE] Chốt kiến trúc dài hạn.
+[DONE] Loại bỏ chấm công bằng điện thoại/Wi-Fi/GPS.
+[DONE] Chốt no-AI.
+[DONE] Tạo Whitepaper V1.0.
+[TODO-ANH] Phê duyệt Whitepaper hoặc yêu cầu sửa phiên bản.
+
+GATE A - QUYỀN TRUY CẬP VÀ MÔI TRƯỜNG
+
+[EM] Tạo checklist kiểm tra, cấu trúc repo, branch policy, env template.
+[ANH] Tạo/chọn private GitHub repo và cấp quyền phiên làm việc.
+[ANH] Xác nhận máy host, Cloudflare và quyền quản trị cần thiết.
+[ANH] Xác nhận kế hoạch Mac/Xcode cho iOS.
+[ANH] Không gửi secret trong chat; chỉ đặt secret trên host/console chính chủ.
+
+SPRINT 7 NGÀY - ENGINEERING ALPHA, KHÔNG GỌI LÀ PRODUCTION
+
+Ngày 1 - Contract và skeleton
+[EM] Khóa data model, API/event contract, acceptance criteria và repo skeleton.
+[ANH] Xác nhận role, tên app, bundle/package identifier và pilot scope.
+
+Ngày 2 - Backend foundation
+[EM] BMA Core, PostgreSQL migrations, health, auth/account pending/admin approve.
+[ANH] Chạy/cho phép deploy local nếu phiên không có quyền trực tiếp trên host.
+
+Ngày 3 - Gateway integration
+[EM] MotorNode/BMKCS adapters, outbox, idempotency, reconcile test.
+[ANH] Cấp repo/config Gateway và chạy restart/health test trên máy thật khi cần.
+
+Ngày 4 - Flutter foundation
+[EM] Login, navigation 5 trang, secure session, theme, cache và API client.
+[ANH] Kết nối điện thoại Android, chấp nhận USB debugging và test build.
+
+Ngày 5 - Operations và Quality
+[EM] Trang nhà máy, lịch tương lai, runtime/TOU, quality charts, freshness.
+[ANH] Xác nhận quy tắc nhà máy START/STOP và threshold hiển thị cuối.
+
+Ngày 6 - Employee, Attendance, Announcements
+[EM] Hồ sơ nhân viên, event attendance mock, đối chiếu, audit, thông báo/Admin.
+[ANH] Cung cấp danh sách role mẫu và quy tắc duyệt; không cần data nhân sự thật.
+
+Ngày 7 - Alpha end-to-end
+[EM] Build Android alpha, automated tests, staging deploy, runbook và bug list.
+[ANH] Test trên thiết bị thật, xác nhận các luồng nghiệp vụ và ký Alpha Gate.
+
+ĐỊNH NGHĨA ALPHA GATE
+
+- BMA Core chạy độc lập khi OpenClaw/AI tắt.
+- Android login và giữ session.
+- Hiện được MotorNode/BMKCS qua contract thật hoặc fixture có schema giống thật.
+- Năm trang chính có luồng end-to-end tối thiểu.
+- Duplicate event không tạo duplicate record.
+- Backup/restore dev được test.
+- Chưa dùng data chấm công để tính lương production.
+
+TUẦN 2 - HARDENING VÀ INTERNAL BETA
+
+- Push notification thật.
+- Offline/read cache và stale state.
+- Phân quyền, audit, security tests, backup production plan.
+- Pilot Android 5-10 người.
+- Xác nhận công thức tỷ lệ thu hồi và nguồn khối lượng.
+
+TUẦN 3 - ENTRY/EXIT VÀ STORE BETA
+
+- Tích hợp hệ thống Entry/Exit thật khi contract/thiết bị sẵn sàng.
+- Reconcile và approval flow với dữ liệu pilot.
+- Google Play closed testing.
+- TestFlight nếu Apple account, Mac/Xcode và signing sẵn sàng.
+
+TUẦN 4 - PRODUCTION CANDIDATE
+
+- Pilot nhà máy, sửa lỗi, privacy policy, store metadata và screenshots.
+- Disaster recovery drill và production checklist.
+- Submit Store; thời gian review là phụ thuộc bên ngoài.
+- Chỉ go-live khi đạt Production Gate.
+
+ĐỊNH NGHĨA PRODUCTION GATE
+
+- Không mất/trùng sự kiện trong offline/retry test.
+- Restore được database từ backup trên môi trường sạch.
+- Role và employee data được phân quyền đúng.
+- Entry/Exit source được xác thực; raw event bất biến; adjustment có audit.
+- Notification không gửi trùng cùng event.
+- App có privacy policy, account deletion/revocation và support contact.
+- Android/iOS physical-device tests đạt.
+- Có runbook deploy, rollback, incident và credential rotation.
+
+
+7. MA TRẬN PHỐI HỢP ANH - EM
+============================
+
+7.1 Em có thể triển khai nhanh, gần như độc lập sau khi được cho phép code
+
+- Tạo/cập nhật whitepaper, ADR, data dictionary, API/OpenAPI và JSON schema.
+- Tạo repo structure, project skeleton, migrations và seed data synthetic.
+- Viết backend/mobile/admin, unit/integration tests và fixture.
+- Viết MotorNode/BMKCS/Entry-Exit adapter và outbox/reconcile logic.
+- Tối ưu payload, cache, idempotency, logging, health và backup scripts.
+- Review code, log, build error, screenshot và đề xuất patch cụ thể.
+- Tạo checklist deploy, rollback, Store metadata draft và hướng dẫn thao tác.
+- Kiểm tra thay đổi không liên quan và không ghi đè công việc của anh.
+
+7.2 Anh bắt buộc cần can thiệp thủ công
+
+- Tạo/cấp quyền private GitHub repo nếu công cụ phiên chưa có quyền.
+- Phê duyệt phạm vi, role, công thức, threshold và dữ liệu nghiệp vụ chính thức.
+- Quản lý Cloudflare, domain, host, firewall và Windows service quyền admin.
+- Đặt secret/station key/database password trên host; không đưa secret qua chat.
+- Tạo và xác minh Apple Developer, Google Play, Firebase/App Store Connect.
+- Thao tác Apple signing/Xcode, chấp nhận agreement và thanh toán phí tài khoản.
+- Cắm cáp/chấp nhận USB debugging, tin cậy máy tính và test điện thoại thật.
+- Cung cấp/kiểm tra thiết bị Entry/Exit và xác nhận sự kiện vật lý tại nhà máy.
+- Phê duyệt privacy policy, nội quy nhân sự và cách dùng attendance để tính lương.
+- Quyết định go/no-go production.
+
+7.3 Công việc phối hợp theo handshake
+
+1) Em đưa một bước cụ thể, lệnh/checklist và kết quả mong đợi.
+2) Anh thực hiện thao tác có quyền/phần cứng và gửi kết quả không chứa secret.
+3) Em phân tích, sửa artifact/code và chạy test tự động.
+4) Hai bên khóa checkpoint trước khi sang Gate tiếp theo.
+
+Quy tắc sprint:
+
+- Một blocker tại một thời điểm; ưu tiên critical path.
+- Anh không phải lặp lại thông tin đã có trong Whitepaper.
+- Em không hỏi lại một quyết định đã khóa nếu không có mâu thuẫn mới.
+- Mỗi yêu cầu thủ công phải ngắn gọn, có lý do và có cách verify.
+- Mỗi thay đổi production phải có backup/rollback.
+- Không đẩy Store/production chỉ để đạt mốc thời gian.
+
+
+8. DANH SÁCH ANH CẦN CHUẨN BỊ TRƯỚC KHI BẮT ĐẦU CODE
+=====================================================
+
+Critical path:
+
+[ ] Phê duyệt Whitepaper V1.0.
+[ ] Chọn/tạo private repo Binh-Minh-App và cấp quyền.
+[ ] Xác nhận package/bundle ID đề xuất: com.binhminh.bma.
+[ ] Xác nhận BMA local port 8790 và staging route.
+[ ] Xác nhận quyền đọc source/config Gateway; không gửi key qua chat.
+[ ] Chọn 1-2 điện thoại Android pilot.
+[ ] Xác nhận có Mac/Xcode hay sẽ dùng macOS CI.
+[ ] Bắt đầu tạo Apple Developer và Google Play account nếu chưa có.
+[ ] Xác nhận nguồn khối lượng dùng cho tỷ lệ thu hồi.
+[ ] Cung cấp bộ role/department mẫu, chưa cần thông tin nhân viên thật.
+
+Không block Alpha nhưng block Production:
+
+[ ] Hệ thống Entry/Exit và API/device contract thật.
+[ ] Privacy policy/nội quy sử dụng dữ liệu nhân viên.
+[ ] Công thức chấm lương, tăng ca, nghỉ phép, grace và điều chỉnh.
+[ ] Apple/Google signing và Store verification.
+[ ] Danh sách pilot production được phê duyệt.
+
+
+9. RỦI RO VÀ CÁCH XỬ LÝ
+=======================
+
+R1. Không có Mac/Xcode
+- Ảnh hưởng: không build/sign iOS native.
+- Xử lý: Android alpha trước; chuẩn bị macOS CI/Mac song song; không đổi sang PWA.
+
+R2. Gateway chưa có read/event contract ổn định
+- Ảnh hưởng: BMA không có dữ liệu thật.
+- Xử lý: thêm outbox/facade có version; không scrape dashboard.
+
+R3. Nguồn sản lượng cho tỷ lệ thu hồi chưa có
+- Ảnh hưởng: không tính được tỷ lệ đúng.
+- Xử lý: hiện "Chưa đủ dữ liệu"; dùng fixture alpha; không ước đoán.
+
+R4. Hệ thống Entry/Exit chưa sẵn sàng
+- Ảnh hưởng: chưa chấm công production.
+- Xử lý: build contract/mock và approval flow; không dùng điện thoại thay thế.
+
+R5. Mốc 7 ngày tạo áp lực cắt test
+- Ảnh hưởng: lỗi dữ liệu/bảo mật và phải viết lại.
+- Xử lý: 7 ngày = Alpha Gate; production chỉ khi đạt Production Gate.
+
+R6. Secret/credential bị lộ
+- Ảnh hưởng: truy cập trái phép vào Gateway/nhân sự.
+- Xử lý: secret manager/env trên host, rotate, không chat/commit, audit access.
+
+R7. Scope creep
+- Ảnh hưởng: không xong vertical slice.
+- Xử lý: năm trang chính và các Gate là ưu tiên; mọi module mới vào backlog.
+
+
+10. CHI PHÍ VÀ NGUYÊN TẮC TIẾT KIỆM
+===================================
+
+- Flutter, ASP.NET Core và PostgreSQL là open source/free.
+- Tái sử dụng máy host, GitHub private repo và Cloudflare Tunnel hiện có.
+- FCM/APNs chỉ dùng cho push; không mua Firebase Database/Auth.
+- Không mua SaaS HR, analytics, maps, location hoặc AI.
+- Chi phí khó tránh: tài khoản Apple/Google, iOS build environment và phần cứng
+  Entry/Exit.
+- Tối ưu chi phí bằng kiến trúc gọn và test tự động, không bằng cách bỏ qua backup,
+  security hoặc audit.
+
+
+11. CHANGE CONTROL
+==================
+
+Thay đổi nhỏ, không phá kiến trúc:
+- Tăng version 1.1, 1.2...
+- Ghi ngày, lý do, người phê duyệt và mục bị thay đổi.
+
+Thay đổi nền tảng/phạm vi chính:
+- Tăng version 2.0.
+- Cần bảng so sánh, migration plan và rollback.
+
+Quyết định không được thay đổi nếu không có phê duyệt rõ ràng:
+
+- Flutter native là mobile chính thức.
+- BMA Core độc lập ABMT AI/OpenClaw.
+- PostgreSQL trung tâm.
+- Entry/Exit độc lập; không chấm công bằng điện thoại/Wi-Fi/GPS.
+- Raw event immutable + outbox + idempotency + audit.
+- Không AI.
+- Mốc 7 ngày là Engineering Alpha, không phải production giả.
+
+
+12. TÀI LIỆU THAM CHIẾU CHÍNH THỨC
+===================================
+
+- Flutter supported platforms:
+  https://docs.flutter.dev/reference/supported-platforms
+- Microsoft .NET support policy:
+  https://dotnet.microsoft.com/en-us/platform/support/policy
+- Firebase Cloud Messaging for Flutter:
+  https://firebase.google.com/docs/cloud-messaging/flutter/get-started
+- Apple app distribution:
+  https://developer.apple.com/distribute/
+
+
+KẾT LUẬN MỘT DÒNG
+=================
+
+BMA sẽ được xây dựng một lần theo kiến trúc Store-ready bền vững: Flutter native,
+BMA Core độc lập, PostgreSQL, Gateway outbox, Entry/Exit độc lập và no-AI; team
+chạy nước rút theo Gate, không dùng deadline để hợp thức hóa giải pháp tạm bợ.
+

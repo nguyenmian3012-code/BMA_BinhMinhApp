@@ -1,0 +1,10 @@
+# Merge these rules into the existing cloudflared config on MinhComp.
+# Keep /api/motornode and /api/bmkcslab rules before the final catch-all.
+ingress:
+  - hostname: gateway.abmtlab.com
+    path: /bmapp-staging/*
+    service: http://localhost:8791
+  - hostname: gateway.abmtlab.com
+    path: /bmapp/*
+    service: http://localhost:8790
+  - service: http_status:404

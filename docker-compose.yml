@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - bma_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [bma_internal]
+
+  bma:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Bma: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${BMA_JWT_SIGNING_KEY}
+      Gateway__InboundKey: ${BMA_GATEWAY_INBOUND_KEY}
+      BMA_BOOTSTRAP_ADMIN_USERNAME: ${BMA_BOOTSTRAP_ADMIN_USERNAME}
+      BMA_BOOTSTRAP_ADMIN_PASSWORD: ${BMA_BOOTSTRAP_ADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:8790:8080"
+    networks: [bma_internal]
+    read_only: true
+    tmpfs:
+      - /tmp
+
+networks:
+  bma_internal:
+    driver: bridge
+
+volumes:
+  bma_postgres:

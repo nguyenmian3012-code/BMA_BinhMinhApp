@@ -1,0 +1,47 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+appsettings.Production.json
+google-services.json
+GoogleService-Info.plist
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
+
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+TestResults/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+mobile/android/
+mobile/ios/
+mobile/linux/
+mobile/macos/
+mobile/windows/
+mobile/web/
+mobile/.metadata
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.log
+backups/

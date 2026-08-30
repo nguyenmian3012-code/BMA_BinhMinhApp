@@ -1,0 +1,29 @@
+{
+  "event_id": "bmkcs-result-01J6N3M1R8",
+  "event_type": "QUALITY_RESULT_PUBLISHED",
+  "source_system": "BMKCS",
+  "source_device_id": "BMKCSLAB-001",
+  "sequence": null,
+  "occurred_at": "2026-08-30T03:20:00Z",
+  "schema_version": "1.0",
+  "correlation_id": "01J6N3M1R8",
+  "payload": {
+    "result_id": "01J6N3M1R8",
+    "lot_code": "BO-3008-1020-P-D-BM",
+    "measured_at": "2026-08-30T03:20:00Z",
+    "ph": 5.8,
+    "whiteness": 93.4,
+    "moisture": 12.4,
+    "fineness": null,
+    "fineness_unit": null,
+    "viscosity": null,
+    "viscosity_unit": null,
+    "extra_value": null,
+    "product_code": "BO",
+    "operator_code": "P",
+    "quality_code": "D",
+    "customer_code": "BM"
+  },
+  "payload_hash": "a9b5abbd76c5e1820251860eadab78edafd134ca98973af420304459f9cc25ca",
+  "signature": null
+}

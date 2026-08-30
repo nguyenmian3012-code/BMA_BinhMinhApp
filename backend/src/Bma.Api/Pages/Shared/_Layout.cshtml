@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>@ViewData["Title"] · BMA Admin</title>
+    <link rel="stylesheet" href="~/css/admin.css" asp-append-version="true" />
+</head>
+<body>
+<header>
+    <a class="brand" href="/bmapp/admin"><span>BMA</span> Bình Minh App</a>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <nav>
+            <a href="/bmapp/admin">Tổng quan</a>
+            <a href="/bmapp/admin/accounts">Tài khoản</a>
+            <a href="/bmapp/admin/schedules">Lịch chạy</a>
+            <a href="/bmapp/admin/announcements">Thông báo</a>
+            <form method="post" action="/bmapp/admin/logout"><button>Đăng xuất</button></form>
+        </nav>
+    }
+</header>
+<main>
+    @RenderBody()
+</main>
+</body>
+</html>
