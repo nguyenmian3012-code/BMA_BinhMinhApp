@@ -1,12 +1,13 @@
 # Merge these rules into the existing cloudflared config on MinhComp.
 # Keep /api/motornode and /api/bmkcslab rules before the final catch-all.
+# Path values are Go regular expressions, not shell-style wildcard patterns.
 # The staging container must use App__PathBase=/bmapp-staging; production uses
 # App__PathBase=/bmapp. cloudflared forwards the original path without rewriting.
 ingress:
   - hostname: gateway.abmtlab.com
-    path: /bmapp-staging/*
+    path: ^/bmapp-staging(/.*)?$
     service: http://localhost:8791
   - hostname: gateway.abmtlab.com
-    path: /bmapp/*
+    path: ^/bmapp(/.*)?$
     service: http://localhost:8790
   - service: http_status:404
