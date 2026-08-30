@@ -76,6 +76,8 @@ flutter run --dart-define=BMA_API_BASE_URL=http://10.0.2.2:8790/bmapp/api/v1
 
 CI tạo Android shell trong thư mục tạm, phân tích mã, chạy test và build debug
 APK; source Flutter trong repo không phụ thuộc file sinh tự động để review gọn.
+Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu quota tài khoản đã
+đầy. Kênh phát hành bền vững là APK/AAB đã ký qua `/bmapp/download` hoặc Store.
 
 ## Tiêu chuẩn dữ liệu quan trọng
 
@@ -92,6 +94,7 @@ APK; source Flutter trong repo không phụ thuộc file sinh tự động để
 - [Data dictionary](docs/DATA_DICTIONARY.md)
 - [Gateway integration](docs/GATEWAY_INTEGRATION.md)
 - [Triển khai và rollback](docs/DEPLOYMENT.md)
+- [Nhật ký phân tích lỗi build](docs/BUILD_TROUBLESHOOTING.md)
 - [Các bước thủ công của chủ hệ thống](docs/OWNER_ACTIONS.md)
 - [Roadmap](docs/ROADMAP.md)
 
