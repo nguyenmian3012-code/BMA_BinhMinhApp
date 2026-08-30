@@ -10,7 +10,9 @@
 ## Trước staging
 
 - Tạo database/user PostgreSQL staging và đặt secret trực tiếp trên host.
-- Cấp route `/bmapp-staging/*` trong Cloudflare Tunnel.
+- Cấp route regex `^/bmapp-staging(/.*)?$` trong Cloudflare Tunnel, đặt trước
+  route catch-all của `gateway.abmtlab.com`; Cloudflare giữ nguyên path khi
+  chuyển tiếp đến `http://localhost:8791`.
 - Trong `.env.staging`, đặt `BMA_HOST_PORT=8791` và
   `BMA_PATH_BASE=/bmapp-staging`; production giữ `BMA_HOST_PORT=8790` và
   `BMA_PATH_BASE=/bmapp`.
