@@ -20,9 +20,11 @@
 `PENDING → APPROVED → DISABLED|REJECTED`. Chỉ `APPROVED` được đăng nhập.
 Bootstrap Admin chỉ chạy khi hai biến môi trường được cấp, và được audit.
 
-Admin cookie luôn `Secure` ở staging/production; Development cho phép HTTP local
-để kiểm thử. Khóa Data Protection được giữ trong volume riêng để restart
-container không làm hỏng cookie và antiforgery token đang còn hiệu lực.
+Admin cookie dùng tiền tố `__Secure-` và đúng `PathBase` ở staging/production;
+Development dùng tên không tiền tố để kiểm thử qua HTTP local. Không dùng
+`__Host-` vì tiền tố đó bắt buộc `Path=/`, trái với việc cô lập BMA dưới
+`/bmapp`. Khóa Data Protection được giữ trong volume riêng để restart container
+không làm hỏng cookie và antiforgery token đang còn hiệu lực.
 
 ## Integration
 

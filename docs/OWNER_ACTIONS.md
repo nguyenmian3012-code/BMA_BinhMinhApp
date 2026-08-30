@@ -11,8 +11,11 @@
 
 - Tạo database/user PostgreSQL staging và đặt secret trực tiếp trên host.
 - Cấp route `/bmapp-staging/*` trong Cloudflare Tunnel.
-- Đặt `BMA_PATH_BASE=/bmapp-staging` cho container staging; production giữ
+- Trong `.env.staging`, đặt `BMA_HOST_PORT=8791` và
+  `BMA_PATH_BASE=/bmapp-staging`; production giữ `BMA_HOST_PORT=8790` và
   `BMA_PATH_BASE=/bmapp`.
+- Khởi động với `--project-name bma-staging`; không dùng cùng Compose project
+  với production và không chạy `docker compose down -v`.
 - Đặt `Gateway__InboundKey` giống nhau ở Gateway và BMA staging.
 - Chạy `infra/scripts/health-check.ps1 -BaseUrl http://localhost:8791
   -PathBase /bmapp-staging` và gửi lại output không chứa secret.

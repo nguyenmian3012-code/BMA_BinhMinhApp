@@ -25,6 +25,14 @@ jobs:
         run: node infra/scripts/validate-contracts.mjs
       - name: Scan tracked files for credentials
         run: bash infra/scripts/secret-scan.sh
+      - name: Validate production and staging Compose isolation
+        run: |
+          docker compose --project-name bma-production --env-file .env.example config >/tmp/bma-production-compose.yml
+          BMA_HOST_PORT=8791 BMA_PATH_BASE=/bmapp-staging \
+            docker compose --project-name bma-staging --env-file .env.example config >/tmp/bma-staging-compose.yml
+          grep --quiet 'published: "8790"' /tmp/bma-production-compose.yml
+          grep --quiet 'published: "8791"' /tmp/bma-staging-compose.yml
+          grep --quiet 'App__PathBase: /bmapp-staging' /tmp/bma-staging-compose.yml
 
   backend:
     runs-on: ubuntu-latest
@@ -55,6 +63,7 @@ jobs:
         run: dotnet test backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage"
       - name: Runtime smoke test under configured PathBase
         env:
+          ASPNETCORE_ENVIRONMENT: Development
           ASPNETCORE_URLS: http://127.0.0.1:8790
           App__PathBase: /bmapp-ci
           ConnectionStrings__Bma: Host=127.0.0.1;Port=5432;Database=bma_ci;Username=bma_ci;Password=bma_ci_only
@@ -72,7 +81,24 @@ jobs:
             sleep 1
           done
           curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health >/dev/null
-          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/admin/login | grep --quiet "BMA Admin"
+          admin_login_html=$(curl --fail --silent --cookie-jar /tmp/bma-admin.cookies \
+            http://127.0.0.1:8790/bmapp-ci/admin/login)
+          printf '%s' "$admin_login_html" | grep --quiet "BMA Admin"
+          antiforgery_token=$(printf '%s' "$admin_login_html" | \
+            sed -n 's/.*name="__RequestVerificationToken"[^>]*value="\([^"]*\)".*/\1/p')
+          test -n "$antiforgery_token"
+          admin_login_status=$(curl --silent --output /tmp/bma-admin-login-response.html \
+            --write-out '%{http_code}' --cookie /tmp/bma-admin.cookies \
+            --cookie-jar /tmp/bma-admin.cookies --request POST \
+            --data-urlencode 'Input.Username=ci-admin' \
+            --data-urlencode 'Input.Password=ci-only-bootstrap-password' \
+            --data-urlencode "__RequestVerificationToken=$antiforgery_token" \
+            http://127.0.0.1:8790/bmapp-ci/admin/login)
+          test "$admin_login_status" = "302"
+          awk '$6 == "BMA-Admin" && $3 == "/bmapp-ci" { found=1 } END { exit !found }' \
+            /tmp/bma-admin.cookies
+          curl --fail --silent --cookie /tmp/bma-admin.cookies \
+            http://127.0.0.1:8790/bmapp-ci/admin | grep --quiet "Tổng quan hệ thống"
           curl --fail --silent http://127.0.0.1:8790/bmapp-ci/css/admin.css | grep --quiet "background:#7b1015"
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8790/health)" = "404"
 

@@ -34,7 +34,7 @@ services:
       BMA_BOOTSTRAP_ADMIN_USERNAME: ${BMA_BOOTSTRAP_ADMIN_USERNAME}
       BMA_BOOTSTRAP_ADMIN_PASSWORD: ${BMA_BOOTSTRAP_ADMIN_PASSWORD}
     ports:
-      - "127.0.0.1:8790:8080"
+      - "127.0.0.1:${BMA_HOST_PORT:-8790}:8080"
     volumes:
       - bma_dataprotection:/home/app/.aspnet/DataProtection-Keys
     networks: [bma_internal]

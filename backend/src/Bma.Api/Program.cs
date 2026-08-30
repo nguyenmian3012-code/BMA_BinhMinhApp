@@ -74,7 +74,10 @@ builder.Services.AddAuthentication(options =>
 {
     options.LoginPath = "/admin/login";
     options.AccessDeniedPath = "/admin/denied";
-    options.Cookie.Name = "__Host-BMA-Admin";
+    options.Cookie.Name = builder.Environment.IsDevelopment()
+        ? "BMA-Admin"
+        : "__Secure-BMA-Admin";
+    options.Cookie.Path = pathBase;
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()

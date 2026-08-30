@@ -38,11 +38,8 @@ public sealed class LoginModel(AuthService auth) : PageModel
         await HttpContext.SignInAsync(BmaAuthSchemes.Cookie,
             new ClaimsPrincipal(new ClaimsIdentity(claims, BmaAuthSchemes.Cookie)),
             new AuthenticationProperties { IsPersistent = true, AllowRefresh = true });
-        return IsLocal(ReturnUrl) ? LocalRedirect(ReturnUrl!) : RedirectToPage("/Admin/Index");
+        return Url.IsLocalUrl(ReturnUrl) ? LocalRedirect(ReturnUrl!) : RedirectToPage("/Admin/Index");
     }
-
-    private static bool IsLocal(string? value) => value is not null && value.StartsWith('/') &&
-                                                   !value.StartsWith("//");
 
     public sealed class LoginInput
     {

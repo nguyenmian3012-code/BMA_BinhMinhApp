@@ -65,7 +65,9 @@ Invoke-RestMethod http://localhost:8790/bmapp/health
 
 `BMA_PATH_BASE` phải khớp route Cloudflare. Dùng `/bmapp` cho production và
 `/bmapp-staging` cho staging; backend, Admin và static assets dùng chung prefix
-này thay vì hard-code đường dẫn.
+này thay vì hard-code đường dẫn. `BMA_HOST_PORT` mặc định là `8790`; staging
+dùng `8791` và phải chạy bằng một Compose project riêng để database/volume
+không trùng production.
 
 ## Chạy Flutter local
 
