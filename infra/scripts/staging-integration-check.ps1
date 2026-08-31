@@ -108,20 +108,36 @@ function Invoke-PostgresScalar {
         [Parameter(Mandatory = $true)][string]$ComposeProject
     )
 
+    # Pass SQL as sh positional parameter instead of an environment value. This keeps
+    # quotes intact across PowerShell -> docker compose -> Alpine sh.
     $arguments = @(
         "compose",
         "--project-name", $ComposeProject,
         "--env-file", $ComposeEnvFile,
         "exec", "-T",
-        "-e", "BMA_CHECK_SQL=$Sql",
         "postgres", "sh", "-lc",
-        'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -qAt -c "$BMA_CHECK_SQL"'
+        'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -qAt -c "$1"',
+        "bma-staging-check",
+        $Sql
     )
-    $output = & docker @arguments 2>&1
+    $output = @(& docker @arguments 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "PostgreSQL verification failed: $($output -join [Environment]::NewLine)"
     }
-    return ($output | Select-Object -Last 1).ToString().Trim()
+
+    $nonEmptyLines = @(
+        foreach ($item in $output) {
+            if ($null -eq $item) { continue }
+            $line = $item.ToString().Trim()
+            if (![string]::IsNullOrWhiteSpace($line)) {
+                $line
+            }
+        }
+    )
+    if ($nonEmptyLines.Count -eq 0) {
+        throw "PostgreSQL verification returned no scalar value."
+    }
+    return $nonEmptyLines[-1]
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
