@@ -25,6 +25,24 @@ jobs:
         run: node infra/scripts/validate-contracts.mjs
       - name: Scan tracked files for credentials
         run: bash infra/scripts/secret-scan.sh
+      - name: Parse PowerShell operational scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem infra/scripts -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $failed = $true
+              Write-Error "$($_.FullName): $($parseErrors -join '; ')"
+            }
+          }
+          if ($failed) { throw "PowerShell syntax validation failed." }
       - name: Validate production and staging Compose isolation
         run: |
           docker compose --project-name bma-production --env-file .env.example config >/tmp/bma-production-compose.yml
