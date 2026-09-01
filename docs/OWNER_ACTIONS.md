@@ -24,13 +24,16 @@
 
 ## Trước Android Alpha
 
-- Bật Developer options và USB debugging.
-- Cắm cáp, chấp nhận fingerprint máy phát triển.
-- Nếu quota cho phép, dùng GitHub Actions artifact để test nhanh; đây không phải
-  kênh phát hành chính.
-- Nếu artifact không có, build APK Alpha đã ký trên máy kiểm soát, ghi SHA-256,
-  chép lên MinhComp và tải qua HTTPS `/bmapp/download`.
-- Cài APK và test login, giữ session, 5 trang chính và inbox thông báo.
+- Bật Developer options và USB debugging trên một Samsung Fold 7 hoặc S24 Ultra.
+- Cắm đúng một thiết bị, chấp nhận fingerprint máy phát triển và giữ màn hình mở.
+- Chỉ dùng artifact `bma-android-alpha-staging` từ CI xanh của đúng commit cần
+  test. Artifact phải chứa APK arm64, `BUILD_INFO.txt` và `SHA256SUMS.txt`.
+- Chạy `infra/scripts/install-android-alpha.ps1` với đường dẫn ZIP; script tự
+  kiểm checksum, ADB install, package ID và launch.
+- Thực hiện `docs/ANDROID_ALPHA_TEST.md`: login, giữ session, năm trang chính,
+  offline cache, inbox và logout.
+- APK profile từ CI dùng khóa ký tạm thời, chỉ dành cho physical-device Alpha.
+  Kênh pilot bền vững cần khóa Android nội bộ ổn định lưu ngoài Git/chat.
 
 ## Trước iOS/TestFlight
 
