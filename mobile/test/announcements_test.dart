@@ -15,5 +15,6 @@ void main() {
     final items = data['items'] as List<Map<String, dynamic>>;
     expect(items[0]['read_at'], 'LOCAL');
     expect(items[1]['read_at'], isNull);
+    expect(announcementUnreadCount(data), 1);
   });
 }

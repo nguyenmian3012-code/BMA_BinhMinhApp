@@ -29,6 +29,12 @@ class BmaRepository {
   }
 }
 
+int announcementUnreadCount(Map<String, dynamic> data) =>
+    (data['items'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .where((item) => item['read_at'] == null)
+        .length;
+
 void applyLocalAnnouncementReads(
   Map<String, dynamic> data,
   Set<String> locallyReadIds,

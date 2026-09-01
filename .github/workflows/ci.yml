@@ -204,6 +204,16 @@ jobs:
       - name: Test
         working-directory: ${{ runner.temp }}/bma
         run: flutter test
+      - name: Restore stable Android Alpha signing key
+        env:
+          BMA_ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.BMA_ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64"
+          mkdir -p "$HOME/.android"
+          printf '%s' "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+
       - name: Build Android Staging Alpha APK
         working-directory: ${{ runner.temp }}/bma
         env:
@@ -224,6 +234,7 @@ jobs:
             echo "target_abi=arm64-v8a"
             echo "api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1"
             echo "brand_asset=BM7-official"
+            echo "signing_key=stable-alpha-debug-v1"
             echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > "$artifact_dir/BUILD_INFO.txt"
           (
@@ -240,6 +251,7 @@ jobs:
           grep --quiet 'target_abi=arm64-v8a' BUILD_INFO.txt
           grep --quiet 'api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1' BUILD_INFO.txt
           grep --quiet 'brand_asset=BM7-official' BUILD_INFO.txt
+          grep --quiet 'signing_key=stable-alpha-debug-v1' BUILD_INFO.txt
       - name: Upload Android Staging Alpha APK when quota is available
         id: apk_upload
         continue-on-error: true

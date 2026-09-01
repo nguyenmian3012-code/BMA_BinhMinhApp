@@ -125,7 +125,7 @@ public static class ApiEndpoints
                     priority = x.Priority,
                     x.PublishedAt,
                     x.ExpiresAt,
-                    read_at = reads.GetValueOrDefault(x.Id)
+                    read_at = AnnouncementReadAt(reads, x.Id)
                 })
             });
         });
@@ -145,6 +145,10 @@ public static class ApiEndpoints
 
         return endpoints;
     }
+
+    public static DateTimeOffset? AnnouncementReadAt(
+        IReadOnlyDictionary<Guid, DateTimeOffset> reads, Guid announcementId) =>
+        reads.TryGetValue(announcementId, out var readAt) ? readAt : null;
 
     private static Guid UserId(ClaimsPrincipal principal) =>
         Guid.Parse(principal.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub) ??
