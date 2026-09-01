@@ -18,6 +18,23 @@ if (!(Test-Path $envPath)) {
     throw "Environment file not found: $envPath"
 }
 
+function Invoke-DockerCapture([string[]]$DockerArguments) {
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& docker @DockerArguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    return [PSCustomObject]@{
+        ExitCode = $exitCode
+        Output = $output
+    }
+}
+
 function Get-EnvValue([string]$Name) {
     $escapedName = [regex]::Escape($Name)
     $line = Get-Content $envPath |
@@ -92,17 +109,25 @@ try {
         throw "Could not start isolated restore container."
     }
 
-    $ready = $false
-    for ($attempt = 1; $attempt -le 30; $attempt++) {
-        & docker exec $restoreContainer pg_isready --username $restoreUser --dbname $restoreDatabase | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            $ready = $true
+    $initialized = $false
+    $lastContainerLogs = @()
+    for ($attempt = 1; $attempt -le 60; $attempt++) {
+        $logResult = Invoke-DockerCapture @("logs", $restoreContainer)
+        $lastContainerLogs = $logResult.Output
+        if (($lastContainerLogs | Out-String) -match "PostgreSQL init process complete; ready for start up") {
+            $initialized = $true
             break
         }
         Start-Sleep -Seconds 1
     }
-    if (!$ready) {
-        throw "Isolated PostgreSQL did not become ready."
+    if (!$initialized) {
+        $lastContainerLogs | ForEach-Object { Write-Host $_ }
+        throw "Isolated PostgreSQL initialization did not complete."
+    }
+
+    & docker exec $restoreContainer pg_isready --username $restoreUser --dbname $restoreDatabase | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Isolated PostgreSQL did not become ready after initialization."
     }
 
     & docker cp $backupPath ($restoreContainer + ":/tmp/bma.dump")
@@ -110,9 +135,18 @@ try {
         throw "Could not copy backup into isolated restore container."
     }
 
-    & docker exec $restoreContainer pg_restore --username $restoreUser --dbname $restoreDatabase --no-owner --no-privileges /tmp/bma.dump
-    if ($LASTEXITCODE -ne 0) {
-        throw "pg_restore failed with exit code $LASTEXITCODE"
+    $restoreResult = Invoke-DockerCapture @(
+        "exec", $restoreContainer,
+        "pg_restore",
+        "--username", $restoreUser,
+        "--dbname", $restoreDatabase,
+        "--no-owner",
+        "--no-privileges",
+        "/tmp/bma.dump"
+    )
+    $restoreResult.Output | ForEach-Object { Write-Host $_ }
+    if ($restoreResult.ExitCode -ne 0) {
+        throw "pg_restore failed with exit code $($restoreResult.ExitCode)"
     }
 
     $migrationCount = (& docker exec $restoreContainer psql --username $restoreUser --dbname $restoreDatabase --tuples-only --no-align --command 'SELECT COUNT(*) FROM "__EFMigrationsHistory";' | Out-String).Trim()
