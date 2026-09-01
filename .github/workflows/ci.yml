@@ -45,6 +45,17 @@ jobs:
             }
           }
           if ($failed) { throw "PowerShell syntax validation failed." }
+      - name: Reject command-line SQL in PowerShell
+        shell: pwsh
+        run: |
+          $unsafeSql = Get-ChildItem infra/scripts -Filter *.ps1 |
+            Select-String -Pattern '(?i)--command'
+          if ($unsafeSql) {
+            $unsafeSql | ForEach-Object {
+              Write-Error "$($_.Path):$($_.LineNumber): stream SQL through stdin instead of docker command arguments"
+            }
+            throw "Unsafe PowerShell-to-Docker SQL transport detected."
+          }
       - name: Validate production and staging Compose isolation
         run: |
           docker compose --project-name bma-production --env-file .env.example config >/tmp/bma-production-compose.yml

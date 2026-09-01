@@ -35,6 +35,44 @@ function Invoke-DockerCapture([string[]]$DockerArguments) {
     }
 }
 
+function Invoke-PostgresScalar {
+    param(
+        [Parameter(Mandatory = $true)][string]$Sql,
+        [Parameter(Mandatory = $true)][string]$Container,
+        [Parameter(Mandatory = $true)][string]$User,
+        [Parameter(Mandatory = $true)][string]$Database
+    )
+
+    # SQL must travel through stdin. Command-line SQL loses quotes at the
+    # Windows PowerShell -> docker.exe boundary.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @($Sql | & docker exec -i $Container psql -v ON_ERROR_STOP=1 --username $User --dbname $Database --quiet --tuples-only --no-align 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    if ($exitCode -ne 0) {
+        throw "PostgreSQL verification failed (exit $exitCode): $($output -join [Environment]::NewLine)"
+    }
+
+    $lines = @(
+        foreach ($item in $output) {
+            if ($null -eq $item) { continue }
+            $line = $item.ToString().Trim()
+            if (![string]::IsNullOrWhiteSpace($line)) { $line }
+        }
+    )
+    if ($lines.Count -eq 0) {
+        throw "PostgreSQL verification returned no scalar value."
+    }
+
+    return $lines[-1]
+}
+
 function Get-EnvValue([string]$Name) {
     $escapedName = [regex]::Escape($Name)
     $line = Get-Content $envPath |
@@ -149,8 +187,13 @@ try {
         throw "pg_restore failed with exit code $($restoreResult.ExitCode)"
     }
 
-    $migrationCount = (& docker exec $restoreContainer psql --username $restoreUser --dbname $restoreDatabase --tuples-only --no-align --command 'SELECT COUNT(*) FROM "__EFMigrationsHistory";' | Out-String).Trim()
-    $tableCount = (& docker exec $restoreContainer psql --username $restoreUser --dbname $restoreDatabase --tuples-only --no-align --command "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';" | Out-String).Trim()
+    $preflight = Invoke-PostgresScalar -Sql "SELECT 1;" -Container $restoreContainer -User $restoreUser -Database $restoreDatabase
+    if ($preflight -ne "1") {
+        throw "Restored PostgreSQL scalar preflight failed."
+    }
+
+    $migrationCount = Invoke-PostgresScalar -Sql 'SELECT COUNT(*) FROM "__EFMigrationsHistory";' -Container $restoreContainer -User $restoreUser -Database $restoreDatabase
+    $tableCount = Invoke-PostgresScalar -Sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';" -Container $restoreContainer -User $restoreUser -Database $restoreDatabase
 
     if ($migrationCount -notmatch "^\d+$" -or [int]$migrationCount -lt 1) {
         throw "Restored database has no EF migration history."
