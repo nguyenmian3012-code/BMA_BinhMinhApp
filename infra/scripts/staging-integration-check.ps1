@@ -108,21 +108,21 @@ function Invoke-PostgresScalar {
         [Parameter(Mandatory = $true)][string]$ComposeProject
     )
 
-    # Pass SQL as sh positional parameter instead of an environment value. This keeps
-    # quotes intact across PowerShell -> docker compose -> Alpine sh.
+    # Stream SQL through stdin so it never crosses PowerShell -> Docker -> Alpine sh
+    # as a quoted command-line argument. The shell is used only to expand the
+    # container-owned PostgreSQL connection variables.
     $arguments = @(
         "compose",
         "--project-name", $ComposeProject,
         "--env-file", $ComposeEnvFile,
         "exec", "-T",
-        "postgres", "sh", "-lc",
-        'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -qAt -c "$1"',
-        "bma-staging-check",
-        $Sql
+        "postgres", "sh", "-c",
+        'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -qAt'
     )
-    $output = @(& docker @arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        throw "PostgreSQL verification failed: $($output -join [Environment]::NewLine)"
+    $output = @($Sql | & docker @arguments 2>&1)
+    $postgresExitCode = $LASTEXITCODE
+    if ($postgresExitCode -ne 0) {
+        throw "PostgreSQL verification failed (exit $postgresExitCode): $($output -join [Environment]::NewLine)"
     }
 
     $nonEmptyLines = @(
