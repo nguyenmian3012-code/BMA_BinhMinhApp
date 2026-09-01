@@ -188,6 +188,8 @@ jobs:
           cp -R mobile/lib "$RUNNER_TEMP/bma/lib"
           cp -R mobile/test "$RUNNER_TEMP/bma/test"
           cp mobile/pubspec.yaml mobile/analysis_options.yaml "$RUNNER_TEMP/bma/"
+          sed -i 's/android:label="bma"/android:label="Bình Minh App"/' \
+            "$RUNNER_TEMP/bma/android/app/src/main/AndroidManifest.xml"
       - name: Resolve packages
         working-directory: ${{ runner.temp }}/bma
         run: flutter pub get
@@ -197,21 +199,45 @@ jobs:
       - name: Test
         working-directory: ${{ runner.temp }}/bma
         run: flutter test
-      - name: Build Android Alpha APK
+      - name: Build Android Staging Alpha APK
         working-directory: ${{ runner.temp }}/bma
-        run: flutter build apk --debug --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp/api/v1
-      - name: Verify Android Alpha APK
         run: |
-          test -s "$RUNNER_TEMP/bma/build/app/outputs/flutter-apk/app-debug.apk"
-          sha256sum "$RUNNER_TEMP/bma/build/app/outputs/flutter-apk/app-debug.apk"
-      - name: Upload Android Alpha APK when quota is available
+          flutter build apk --profile --target-platform android-arm64 \
+            --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp-staging/api/v1
+          artifact_dir="$RUNNER_TEMP/bma-alpha"
+          short_sha=$(printf '%s' "$GITHUB_SHA" | cut -c1-7)
+          apk_name="BMA-Alpha-$short_sha-arm64.apk"
+          mkdir -p "$artifact_dir"
+          cp build/app/outputs/flutter-apk/app-profile.apk "$artifact_dir/$apk_name"
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "package_id=com.binhminh.bma"
+            echo "build_mode=profile"
+            echo "target_abi=arm64-v8a"
+            echo "api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1"
+            echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > "$artifact_dir/BUILD_INFO.txt"
+          (
+            cd "$artifact_dir"
+            sha256sum "$apk_name" > SHA256SUMS.txt
+          )
+      - name: Verify Android Staging Alpha APK
+        run: |
+          cd "$RUNNER_TEMP/bma-alpha"
+          test "$(find . -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
+          sha256sum --check SHA256SUMS.txt
+          grep --quiet 'package_id=com.binhminh.bma' BUILD_INFO.txt
+          grep --quiet 'build_mode=profile' BUILD_INFO.txt
+          grep --quiet 'target_abi=arm64-v8a' BUILD_INFO.txt
+          grep --quiet 'api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1' BUILD_INFO.txt
+      - name: Upload Android Staging Alpha APK when quota is available
         id: apk_upload
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: bma-android-alpha-debug
-          path: ${{ runner.temp }}/bma/build/app/outputs/flutter-apk/app-debug.apk
-          retention-days: 1
+          name: bma-android-alpha-staging
+          path: ${{ runner.temp }}/bma-alpha
+          retention-days: 3
           compression-level: 0
       - name: Report optional artifact upload failure
         if: steps.apk_upload.outcome == 'failure'
