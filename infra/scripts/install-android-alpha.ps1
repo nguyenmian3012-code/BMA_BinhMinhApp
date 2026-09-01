@@ -148,11 +148,23 @@ adb -s $serial uninstall $PackageId
         throw "Installed package '$PackageId' could not be verified: $($packageOutput -join [Environment]::NewLine)"
     }
 
-    $launchOutput = @(
-        & $adbPath -s $serial shell monkey -p $PackageId -c android.intent.category.LAUNCHER 1 2>&1
-    )
-    if ($LASTEXITCODE -ne 0 -or $launchOutput -match 'No activities found') {
-        throw "BMA could not be launched: $($launchOutput -join [Environment]::NewLine)"
+    # Android's monkey command writes normal diagnostics (including "args:")
+    # to stderr even when the launch succeeds. Windows PowerShell 5.1 turns
+    # native stderr into NativeCommandError when ErrorActionPreference is Stop,
+    # so temporarily allow capture and decide success from the native exit code.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $launchOutput = @(
+            & $adbPath -s $serial shell monkey -p $PackageId -c android.intent.category.LAUNCHER 1 2>&1
+        )
+        $launchExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($launchExitCode -ne 0 -or $launchOutput -match 'No activities found') {
+        throw "BMA could not be launched (exit $launchExitCode): $($launchOutput -join [Environment]::NewLine)"
     }
 
     [PSCustomObject]@{
