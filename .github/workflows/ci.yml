@@ -201,16 +201,19 @@ jobs:
         run: flutter test
       - name: Build Android Staging Alpha APK
         working-directory: ${{ runner.temp }}/bma
+        env:
+          BMA_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           flutter build apk --profile --target-platform android-arm64 \
             --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp-staging/api/v1
           artifact_dir="$RUNNER_TEMP/bma-alpha"
-          short_sha=$(printf '%s' "$GITHUB_SHA" | cut -c1-7)
+          short_sha=$(printf '%s' "$BMA_SOURCE_SHA" | cut -c1-7)
           apk_name="BMA-Alpha-$short_sha-arm64.apk"
           mkdir -p "$artifact_dir"
           cp build/app/outputs/flutter-apk/app-profile.apk "$artifact_dir/$apk_name"
           {
-            echo "commit=$GITHUB_SHA"
+            echo "source_commit=$BMA_SOURCE_SHA"
+            echo "workflow_commit=$GITHUB_SHA"
             echo "package_id=com.binhminh.bma"
             echo "build_mode=profile"
             echo "target_abi=arm64-v8a"
