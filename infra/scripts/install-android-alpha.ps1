@@ -16,6 +16,34 @@ function Get-OnlyApk {
     return $candidates[0]
 }
 
+function Resolve-AdbPath {
+    $command = Get-Command adb -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    $candidates = @(
+        if (![string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) {
+            Join-Path $env:ANDROID_SDK_ROOT "platform-tools\adb.exe"
+        }
+        if (![string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) {
+            Join-Path $env:ANDROID_HOME "platform-tools\adb.exe"
+        }
+        if (![string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+            Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
+        }
+        "C:\Android\platform-tools\adb.exe"
+        "C:\platform-tools\adb.exe"
+    )
+
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+    return $null
+}
+
 try {
     $resolvedArtifact = (Resolve-Path -LiteralPath $ArtifactPath).Path
     $artifactItem = Get-Item -LiteralPath $resolvedArtifact
@@ -66,12 +94,23 @@ try {
     }
     Write-Host "APK checksum: PASS ($actualHash)"
 
-    $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
-    if ($null -eq $adbCommand) {
-        throw "adb was not found. Install Android SDK Platform-Tools or add it to PATH."
+    $adbPath = Resolve-AdbPath
+    if ([string]::IsNullOrWhiteSpace($adbPath)) {
+        throw @"
+adb.exe was not found in PATH or the standard Android SDK locations.
+In Android Studio, install Android SDK Platform-Tools from SDK Manager, or set
+ANDROID_SDK_ROOT to the SDK directory. The usual Windows location is:
+$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe
+"@
+    }
+    Write-Host "ADB: $adbPath"
+
+    $serverOutput = @(& $adbPath start-server 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "adb start-server failed: $($serverOutput -join [Environment]::NewLine)"
     }
 
-    $deviceOutput = @(& $adbCommand.Source devices 2>&1)
+    $deviceOutput = @(& $adbPath devices 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "adb devices failed: $($deviceOutput -join [Environment]::NewLine)"
     }
@@ -90,7 +129,7 @@ try {
     $serial = $readySerials[0]
     Write-Host "Android device: $serial"
 
-    $installOutput = @(& $adbCommand.Source -s $serial install -r $apk.FullName 2>&1)
+    $installOutput = @(& $adbPath -s $serial install -r $apk.FullName 2>&1)
     $installExitCode = $LASTEXITCODE
     if ($installExitCode -ne 0 -or !($installOutput -match '^Success$')) {
         throw @"
@@ -104,13 +143,13 @@ adb -s $serial uninstall $PackageId
 "@
     }
 
-    $packageOutput = @(& $adbCommand.Source -s $serial shell pm path $PackageId 2>&1)
+    $packageOutput = @(& $adbPath -s $serial shell pm path $PackageId 2>&1)
     if ($LASTEXITCODE -ne 0 -or !($packageOutput -match '^package:')) {
         throw "Installed package '$PackageId' could not be verified: $($packageOutput -join [Environment]::NewLine)"
     }
 
     $launchOutput = @(
-        & $adbCommand.Source -s $serial shell monkey -p $PackageId -c android.intent.category.LAUNCHER 1 2>&1
+        & $adbPath -s $serial shell monkey -p $PackageId -c android.intent.category.LAUNCHER 1 2>&1
     )
     if ($LASTEXITCODE -ne 0 -or $launchOutput -match 'No activities found') {
         throw "BMA could not be launched: $($launchOutput -join [Environment]::NewLine)"
