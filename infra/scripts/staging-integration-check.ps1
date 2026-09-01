@@ -167,6 +167,15 @@ try {
     Write-Host "Checkpoint: canonical ingest -> idempotency -> outbox -> projection -> audit"
     Write-Host "Test device: $deviceId"
 
+    # Verify the local database command path before writing synthetic events. A
+    # command-transport failure must not leave another partial checkpoint run.
+    $databaseProbe = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
+        -ComposeProject $ProjectName -Sql "SELECT 1;")
+    if ($databaseProbe -ne 1) {
+        throw "PostgreSQL scalar preflight returned '$databaseProbe' instead of 1."
+    }
+    Write-Host "PostgreSQL scalar preflight: PASS"
+
     $eventOneJson = New-MotorEvent -EventId $eventOneId -DeviceId $deviceId `
         -MotorId $motorId -Sequence 1 -State "ON"
     $accepted = Send-CanonicalEvent -Url $endpoint -GatewayKey $gatewayKey `
