@@ -36,6 +36,7 @@ PostgreSQL và Razor Pages Admin.
 /contracts    OpenAPI, JSON Schema và payload mẫu
 /infra        Docker, Cloudflare, Gateway và script vận hành
 /docs         Whitepaper, ADR, data dictionary, roadmap và runbook
+/assets       Tài sản nhận diện chính thức dùng lại cho app và website
 ```
 
 ## Endpoint dự kiến
@@ -80,8 +81,9 @@ flutter pub get
 flutter run --dart-define=BMA_API_BASE_URL=http://10.0.2.2:8790/bmapp/api/v1
 ```
 
-CI tạo Android shell trong thư mục tạm, phân tích mã, chạy test và build debug
-APK; source Flutter trong repo không phụ thuộc file sinh tự động để review gọn.
+CI tạo Android shell trong thư mục tạm, áp dụng BM7 official launcher icon,
+phân tích mã, chạy test và build profile APK arm64 trỏ staging; source Flutter
+trong repo không phụ thuộc file platform sinh tự động để review gọn.
 Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu quota tài khoản đã
 đầy. Kênh phát hành bền vững là APK/AAB đã ký qua `/bmapp/download` hoặc Store.
 
@@ -103,6 +105,7 @@ Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu qu
 - [Nhật ký phân tích lỗi build](docs/BUILD_TROUBLESHOOTING.md)
 - [Các bước thủ công của chủ hệ thống](docs/OWNER_ACTIONS.md)
 - [Roadmap](docs/ROADMAP.md)
+- [BM7 official app icon](assets/brand/binh-minh/app-icon/README.md)
 
 ## Definition of Done cho Engineering Alpha
 

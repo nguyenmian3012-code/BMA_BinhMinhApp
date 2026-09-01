@@ -166,12 +166,12 @@ class _BmaMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Container(
-      width: 78,
-      height: 78,
-      decoration: const BoxDecoration(color: Color(0xff9b1820), shape: BoxShape.circle),
-      alignment: Alignment.center,
-      child: const Text('BMA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 23)),
+    child: Image.asset(
+      'assets/brand/bm7-app-icon.png',
+      width: 88,
+      height: 88,
+      filterQuality: FilterQuality.high,
+      semanticLabel: 'Logo Bình Minh',
     ),
   );
 }

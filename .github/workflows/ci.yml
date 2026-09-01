@@ -23,6 +23,8 @@ jobs:
           node-version: 24
       - name: Validate contracts and payload hashes
         run: node infra/scripts/validate-contracts.mjs
+      - name: Validate official BM7 brand assets
+        run: node infra/scripts/validate-brand-assets.mjs
       - name: Scan tracked files for credentials
         run: bash infra/scripts/secret-scan.sh
       - name: Parse PowerShell operational scripts
@@ -187,9 +189,12 @@ jobs:
           rm -rf "$RUNNER_TEMP/bma/lib" "$RUNNER_TEMP/bma/test"
           cp -R mobile/lib "$RUNNER_TEMP/bma/lib"
           cp -R mobile/test "$RUNNER_TEMP/bma/test"
+          cp -R mobile/assets "$RUNNER_TEMP/bma/assets"
           cp mobile/pubspec.yaml mobile/analysis_options.yaml "$RUNNER_TEMP/bma/"
           sed -i 's/android:label="bma"/android:label="Bình Minh App"/' \
             "$RUNNER_TEMP/bma/android/app/src/main/AndroidManifest.xml"
+          pwsh -NoProfile -File infra/scripts/apply-mobile-branding.ps1 \
+            -MobileRoot "$RUNNER_TEMP/bma"
       - name: Resolve packages
         working-directory: ${{ runner.temp }}/bma
         run: flutter pub get
@@ -218,6 +223,7 @@ jobs:
             echo "build_mode=profile"
             echo "target_abi=arm64-v8a"
             echo "api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1"
+            echo "brand_asset=BM7-official"
             echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > "$artifact_dir/BUILD_INFO.txt"
           (
@@ -233,6 +239,7 @@ jobs:
           grep --quiet 'build_mode=profile' BUILD_INFO.txt
           grep --quiet 'target_abi=arm64-v8a' BUILD_INFO.txt
           grep --quiet 'api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1' BUILD_INFO.txt
+          grep --quiet 'brand_asset=BM7-official' BUILD_INFO.txt
       - name: Upload Android Staging Alpha APK when quota is available
         id: apk_upload
         continue-on-error: true
