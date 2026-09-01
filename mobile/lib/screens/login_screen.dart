@@ -15,6 +15,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _form = GlobalKey<FormState>();
   final _username = TextEditingController();
   final _password = TextEditingController();
+  bool _rememberCredentials = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedCredentials();
+  }
 
   @override
   void dispose() {
@@ -58,6 +65,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         autofillHints: const [AutofillHints.password],
                         validator: (value) => (value?.length ?? 0) < 10 ? 'Mật khẩu có ít nhất 10 ký tự.' : null,
                       ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _rememberCredentials,
+                        onChanged: widget.state.loading ? null : _setRememberCredentials,
+                        title: const Text('Ghi nhớ tên đăng nhập và mật khẩu'),
+                        subtitle: const Text('Thông tin được lưu trong vùng bảo mật của thiết bị.'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
                       if (widget.state.message != null) ...[
                         const SizedBox(height: 12),
                         Text(widget.state.message!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -84,9 +99,29 @@ class _LoginScreenState extends State<LoginScreen> {
     ),
   );
 
+  Future<void> _loadRememberedCredentials() async {
+    final credentials = await widget.state.readRememberedCredentials();
+    if (!mounted || credentials == null) return;
+    setState(() {
+      _username.text = credentials.username;
+      _password.text = credentials.password;
+      _rememberCredentials = true;
+    });
+  }
+
+  Future<void> _setRememberCredentials(bool? value) async {
+    final remember = value ?? false;
+    setState(() => _rememberCredentials = remember);
+    if (!remember) await widget.state.forgetRememberedCredentials();
+  }
+
   Future<void> _login() async {
     if (!_form.currentState!.validate()) return;
-    await widget.state.login(_username.text, _password.text);
+    await widget.state.login(
+      _username.text,
+      _password.text,
+      rememberCredentials: _rememberCredentials,
+    );
   }
 
   Future<void> _register() async {

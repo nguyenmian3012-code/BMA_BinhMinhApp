@@ -16,5 +16,15 @@
 </section>
 @foreach (var item in Model.Items)
 {
-    <article class="card"><small>@item.Priority · @item.PublishedAt.ToLocalTime()</small><h2>@item.Title</h2><p>@item.Body</p></article>
+    <article class="card">
+        <small>@item.Priority · @item.PublishedAt.ToLocalTime()</small>
+        <h2>@item.Title</h2>
+        <p>@item.Body</p>
+        <div class="actions">
+            <form method="post" asp-page-handler="Delete" asp-route-id="@item.Id"
+                  onsubmit="return confirm('Xóa thông báo này?');">
+                <button class="danger" type="submit">Xóa thông báo</button>
+            </form>
+        </div>
+    </article>
 }

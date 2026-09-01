@@ -12,6 +12,16 @@ class SessionData {
   final DateTime accessExpiresAt;
 }
 
+class RememberedCredentials {
+  const RememberedCredentials({
+    required this.username,
+    required this.password,
+  });
+
+  final String username;
+  final String password;
+}
+
 class SessionStore {
   SessionStore({FlutterSecureStorage? storage})
     : _storage = storage ?? const FlutterSecureStorage();
@@ -19,6 +29,8 @@ class SessionStore {
   static const _accessKey = 'bma_access_token';
   static const _refreshKey = 'bma_refresh_token';
   static const _expiryKey = 'bma_access_expiry';
+  static const _rememberedUsernameKey = 'bma_remembered_username';
+  static const _rememberedPasswordKey = 'bma_remembered_password';
   final FlutterSecureStorage _storage;
 
   Future<SessionData?> read() async {
@@ -42,6 +54,30 @@ class SessionStore {
         key: _expiryKey,
         value: session.accessExpiresAt.toUtc().toIso8601String(),
       ),
+    ]);
+  }
+
+  Future<RememberedCredentials?> readRememberedCredentials() async {
+    final values = await _storage.readAll();
+    final username = values[_rememberedUsernameKey];
+    final password = values[_rememberedPasswordKey];
+    if (username == null || password == null) return null;
+    return RememberedCredentials(username: username, password: password);
+  }
+
+  Future<void> writeRememberedCredentials(
+    RememberedCredentials credentials,
+  ) async {
+    await Future.wait([
+      _storage.write(key: _rememberedUsernameKey, value: credentials.username),
+      _storage.write(key: _rememberedPasswordKey, value: credentials.password),
+    ]);
+  }
+
+  Future<void> clearRememberedCredentials() async {
+    await Future.wait([
+      _storage.delete(key: _rememberedUsernameKey),
+      _storage.delete(key: _rememberedPasswordKey),
     ]);
   }
 

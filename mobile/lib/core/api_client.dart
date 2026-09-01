@@ -39,6 +39,7 @@ class ApiClient {
   final http.Client _client;
   final String baseUrl;
   static const _cachePrefix = 'bma_cache_';
+  static const _announcementReadKey = '${_cachePrefix}announcement_read_ids';
   SessionData? _session;
   bool _refreshing = false;
 
@@ -146,6 +147,20 @@ class ApiClient {
         fromCache: true,
       );
     }
+  }
+
+  Future<Set<String>> localAnnouncementReadIds() async {
+    final preferences = await SharedPreferences.getInstance();
+    return (preferences.getStringList(_announcementReadKey) ?? const <String>[])
+        .toSet();
+  }
+
+  Future<void> rememberAnnouncementRead(String id) async {
+    final preferences = await SharedPreferences.getInstance();
+    final ids = (preferences.getStringList(_announcementReadKey) ?? const <String>[])
+        .toSet()
+      ..add(id);
+    await preferences.setStringList(_announcementReadKey, ids.toList()..sort());
   }
 
   Future<void> post(String path, [Map<String, dynamic>? body]) async {

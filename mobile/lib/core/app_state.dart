@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
+import 'session_store.dart';
 
 class AppState extends ChangeNotifier {
   AppState(this.api);
@@ -16,16 +17,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login(String username, String password) async {
+  Future<RememberedCredentials?> readRememberedCredentials() =>
+      api.sessionStore.readRememberedCredentials();
+
+  Future<void> forgetRememberedCredentials() =>
+      api.sessionStore.clearRememberedCredentials();
+
+  Future<bool> login(
+    String username,
+    String password, {
+    required bool rememberCredentials,
+  }) async {
     loading = true;
     message = null;
     notifyListeners();
     try {
+      final normalizedUsername = username.trim();
       await api.login(
-        username: username.trim(),
+        username: normalizedUsername,
         password: password,
         deviceName: defaultTargetPlatform.name,
       );
+      if (rememberCredentials) {
+        await api.sessionStore.writeRememberedCredentials(
+          RememberedCredentials(
+            username: normalizedUsername,
+            password: password,
+          ),
+        );
+      } else {
+        await api.sessionStore.clearRememberedCredentials();
+      }
       authenticated = true;
       return true;
     } on ApiException catch (error) {

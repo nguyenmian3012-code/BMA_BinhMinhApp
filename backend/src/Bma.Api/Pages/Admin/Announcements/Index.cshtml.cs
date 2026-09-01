@@ -54,6 +54,39 @@ public sealed class IndexModel(BmaDbContext db, AuditWriter audit) : PageModel
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostDeleteAsync(Guid id, CancellationToken ct)
+    {
+        var announcement = await db.Announcements.SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (announcement is null) return NotFound();
+
+        var actor = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var reads = await db.AnnouncementReads
+            .Where(x => x.AnnouncementId == id).ToListAsync(ct);
+        var pendingPush = await db.OutboxMessages
+            .Where(x => x.Topic == "bma.push.notification" &&
+                        x.MessageKey == id.ToString() &&
+                        x.ProcessedAt == null)
+            .ToListAsync(ct);
+
+        db.AnnouncementReads.RemoveRange(reads);
+        db.OutboxMessages.RemoveRange(pendingPush);
+        db.Announcements.Remove(announcement);
+        audit.Add(
+            "ANNOUNCEMENT_DELETED",
+            "ANNOUNCEMENT",
+            announcement.Id.ToString(),
+            actor,
+            before: new
+            {
+                announcement.Title,
+                announcement.Audience,
+                announcement.AudienceValue,
+                announcement.Priority
+            });
+        await db.SaveChangesAsync(ct);
+        return RedirectToPage();
+    }
+
     public sealed class AnnouncementInput
     {
         [Required, StringLength(200)] public string Title { get; set; } = "";
