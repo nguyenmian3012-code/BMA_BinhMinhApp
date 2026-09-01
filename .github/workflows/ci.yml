@@ -210,7 +210,7 @@ jobs:
         run: |
           test -n "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64"
           mkdir -p "$HOME/.android"
-          printf '%s' "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          printf '%s' "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
 
