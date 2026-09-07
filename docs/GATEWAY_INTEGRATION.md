@@ -7,7 +7,7 @@
 - Payload cũ viết tắt: `id`, `lot`, `ts`, `pd`, `prod`, `op`, `qc`, `cust`,
   `ph`, `w`, `m`, `v`, `x`, `station`.
 - MotorNode ingest hiện tại: `POST /api/motornode/events`.
-- Repo ABMT freeze chưa chứa source Gateway production, vì vậy chưa được phép
+- Repo redtigerhead bmapp freeze chưa chứa source Gateway production, vì vậy chưa được phép
   tuyên bố Gateway outbox đã deploy.
 
 ## Hướng tích hợp chính thức
@@ -15,7 +15,7 @@
 Gateway tiếp tục ACK source sau khi raw record và integration outbox đã commit
 cùng transaction. Một dispatcher gửi canonical event tới:
 
-`POST https://gateway.abmtlab.com/bmapp/api/v1/integrations/events`
+`POST https://gateway.redtigerhead.com/bmapp/api/v1/integrations/events`
 
 Headers:
 
@@ -79,7 +79,7 @@ Chi tiết triển khai phía Gateway nằm tại
 Terminal chỉ gọi listener LAN `192.168.1.99:8789`. Bridge commit callback gốc
 vào SQLite trước khi ACK, sau đó gửi canonical event qua HTTPS tới staging:
 
-`POST https://gateway.abmtlab.com/bmapp-staging/api/v1/integrations/events`
+`POST https://gateway.redtigerhead.com/bmapp-staging/api/v1/integrations/events`
 
 Bridge dùng đúng `X-BMA-Gateway-Key` và `Idempotency-Key`. ID người trên
 Terminal phải được map tường minh sang `employee_code` BMA; không dùng tên hiển
