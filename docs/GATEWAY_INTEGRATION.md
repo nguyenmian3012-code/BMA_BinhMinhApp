@@ -73,3 +73,31 @@ Cursor là opaque và chỉ advance sau khi BMA commit toàn bộ page. BMA work
 
 Chi tiết triển khai phía Gateway nằm tại
 [`infra/gateway/OUTBOX_PATCH.md`](../infra/gateway/OUTBOX_PATCH.md).
+
+## BM Face Terminal 1605063 qua BM Device Bridge
+
+Terminal chỉ gọi listener LAN `192.168.1.99:8789`. Bridge commit callback gốc
+vào SQLite trước khi ACK, sau đó gửi canonical event qua HTTPS tới staging:
+
+`POST https://gateway.abmtlab.com/bmapp-staging/api/v1/integrations/events`
+
+Bridge dùng đúng `X-BMA-Gateway-Key` và `Idempotency-Key`. ID người trên
+Terminal phải được map tường minh sang `employee_code` BMA; không dùng tên hiển
+thị, điện thoại hoặc device ID làm `employee_id`.
+
+Thiết bị hiện đặt `Lối vào/Lối ra = Nhập`, vì vậy chỉ phát
+`EMPLOYEE_ENTRY`. `EMPLOYEE_EXIT` chỉ được phát khi operator cấu hình rõ hướng
+`OUT`; BMA không suy diễn hướng từ giờ, vị trí hoặc lượt trước.
+
+Mỗi canonical event được lưu vào `raw_integration_events`. Outbox projector ghi
+`attendance_events` và ghép `attendance_sessions` trong PostgreSQL. Terminal và
+Bridge không có tài khoản SQL.
+
+Kiểm tra toàn bộ ba lớp dữ liệu trên máy staging:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\ops\verify-attendance-pipeline.ps1
+```
+
+Trong giai đoạn shadow, MQTT Dahahi và firmware được giữ nguyên. Lần đầu bật
+forwarding không tự replay callback cũ; chỉ sự kiện mới sau activation được gửi.
