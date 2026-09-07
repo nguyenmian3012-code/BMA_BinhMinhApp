@@ -25,4 +25,23 @@ public sealed class IntegrationContractTests
         Assert.NotEqual(token, hash);
         Assert.Equal(64, hash.Length);
     }
+
+    [Fact]
+    public void Bridge_attendance_payload_matches_canonical_contract()
+    {
+        using var payload = JsonDocument.Parse("""
+            {
+              "employee_id": "BM-TEST-001",
+              "evidence_ref": "bmbridge://1605063/events/test-event-001",
+              "verification_method": "FACE_TERMINAL",
+              "confidence": null
+            }
+            """);
+
+        var hash = IntegrationIngestionService.ComputePayloadHash(payload.RootElement);
+
+        Assert.Matches("^[a-f0-9]{64}$", hash);
+        Assert.Contains(CanonicalEventTypes.EmployeeEntry, CanonicalEventTypes.Supported);
+        Assert.Contains(CanonicalEventTypes.EmployeeExit, CanonicalEventTypes.Supported);
+    }
 }
