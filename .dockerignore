@@ -1,0 +1,13 @@
+.git
+.github
+.env
+**/bin
+**/obj
+**/TestResults
+**/.dart_tool
+**/build
+mobile/android
+mobile/ios
+backups
+*.db
+*.log

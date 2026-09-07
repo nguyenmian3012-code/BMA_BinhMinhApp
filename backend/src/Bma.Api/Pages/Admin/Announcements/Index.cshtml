@@ -1,0 +1,30 @@
+@page "/admin/announcements"
+@model Bma.Pages.Admin.Announcements.IndexModel
+@{
+    ViewData["Title"] = "Thông báo";
+}
+<h1>Thông báo nội bộ</h1>
+<section class="card">
+    <form method="post" class="form-grid">
+        <label>Tiêu đề<input asp-for="Input.Title" /></label>
+        <label>Đối tượng<select asp-for="Input.Audience"><option>COMPANY</option><option>DEPARTMENT</option><option>ROLE</option><option>PERSON</option></select></label>
+        <label>Giá trị đối tượng<input asp-for="Input.AudienceValue" placeholder="Bỏ trống nếu toàn công ty" /></label>
+        <label>Ưu tiên<select asp-for="Input.Priority"><option>NORMAL</option><option>IMPORTANT</option><option>EMERGENCY</option></select></label>
+        <label class="wide">Nội dung<textarea asp-for="Input.Body" rows="5"></textarea></label>
+        <button class="primary" type="submit">Đăng thông báo</button>
+    </form>
+</section>
+@foreach (var item in Model.Items)
+{
+    <article class="card">
+        <small>@item.Priority · @item.PublishedAt.ToLocalTime()</small>
+        <h2>@item.Title</h2>
+        <p>@item.Body</p>
+        <div class="actions">
+            <form method="post" asp-page-handler="Delete" asp-route-id="@item.Id"
+                  onsubmit="return confirm('Xóa thông báo này?');">
+                <button class="danger" type="submit">Xóa thông báo</button>
+            </form>
+        </div>
+    </article>
+}
