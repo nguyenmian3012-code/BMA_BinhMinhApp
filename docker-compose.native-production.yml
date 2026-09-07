@@ -1,0 +1,29 @@
+services:
+  bma:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      AllowedHosts: ${BMA_ALLOWED_HOSTS:-gateway.abmtlab.com;localhost;127.0.0.1}
+      App__PathBase: ${BMA_PATH_BASE:-/bmapp}
+      Database__MigrateOnStartup: "false"
+      ConnectionStrings__Bma: Host=host.docker.internal;Port=5432;Database=binhminh_data;Username=bma_runtime;Password=${BMA_NATIVE_DB_PASSWORD};Include Error Detail=false
+      Jwt__SigningKey: ${BMA_JWT_SIGNING_KEY}
+      Gateway__InboundKey: ${BMA_GATEWAY_INBOUND_KEY}
+      BMA_BOOTSTRAP_ADMIN_USERNAME: ${BMA_BOOTSTRAP_ADMIN_USERNAME}
+      BMA_BOOTSTRAP_ADMIN_PASSWORD: ${BMA_BOOTSTRAP_ADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:${BMA_HOST_PORT:-8790}:8080"
+    volumes:
+      - bma_native_dataprotection:/home/app/.aspnet/DataProtection-Keys
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  bma_native_dataprotection:
