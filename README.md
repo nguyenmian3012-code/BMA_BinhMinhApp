@@ -40,6 +40,19 @@ PostgreSQL và Razor Pages Admin.
 /assets       Tài sản nhận diện chính thức dùng lại cho app và website
 ```
 
+## Một lệnh triển khai Terminal staging
+
+Giải nén `BMA-Terminal-Stack-v0.3.1`, giữ nguyên `.env.staging`, `data` và
+`employee-map.json`, rồi chạy:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\Deploy-BMA-Terminal-v0.3.1.ps1
+```
+
+Script deploy BMA, kiểm tra tương thích local/public, nâng cấp và khởi động
+Bridge, rồi requeue callback. Nếu BMA chưa hỗ trợ `EMPLOYEE_SCAN`, script dừng
+trước khi Bridge gửi dữ liệu.
+
 ## Endpoint dự kiến
 
 | Route | Chức năng |

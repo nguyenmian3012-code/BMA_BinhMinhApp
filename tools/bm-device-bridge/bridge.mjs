@@ -284,7 +284,7 @@ const server = createServer(async (request, response) => {
     const counts = statusCounts.get();
     return sendJson(response, 200, {
       ok: true,
-      version: "0.3.0",
+      version: "0.3.1",
       mode: forwarding ? "forwarding-staging" : "shadow-local-only",
       deviceId,
       direction: forwarding ? "AUTO" : null,
@@ -485,7 +485,7 @@ const flushTimer = setInterval(flushOutbox, 2_000);
 flushTimer.unref();
 
 server.listen(port, host, () => {
-  console.log(`BM Device Bridge v0.3.0 đang nghe tại http://${host}:${port}`);
+  console.log(`BM Device Bridge v0.3.1 đang nghe tại http://${host}:${port}`);
   console.log(`Terminal được phép: ${[...allowedIps].join(", ")}`);
   console.log(`Chế độ: ${forwarding ? "STAGING AUTO" : "SHADOW (chỉ lưu cục bộ)"}`);
   if (forwarding) {

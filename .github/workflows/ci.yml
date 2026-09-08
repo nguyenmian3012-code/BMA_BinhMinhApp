@@ -23,22 +23,25 @@ jobs:
           node-version: 24
       - name: Validate contracts and payload hashes
         run: node infra/scripts/validate-contracts.mjs
-      - name: Test BM Device Bridge v0.3.0
+      - name: Test BM Device Bridge v0.3.1
         working-directory: tools/bm-device-bridge
         run: npm test
-      - name: Package BM Device Bridge v0.3.0
+      - name: Package BMA Terminal Stack v0.3.1
         run: |
-          cd tools
-          zip -r "$RUNNER_TEMP/BM-Device-Bridge-v0.3.0.zip" bm-device-bridge \
-            -x '*/data/*' '*/employee-map.json'
-          sha256sum "$RUNNER_TEMP/BM-Device-Bridge-v0.3.0.zip" \
-            > "$RUNNER_TEMP/BM-Device-Bridge-v0.3.0.sha256"
+          package="$RUNNER_TEMP/BMA-Terminal-Stack-v0.3.1"
+          mkdir -p "$package/tools"
+          cp Directory.Build.props docker-compose.yml .env.example \
+            Deploy-BMA-Terminal-v0.3.1.ps1 "$package/"
+          cp -R backend "$package/backend"
+          cp -R tools/bm-device-bridge "$package/tools/bm-device-bridge"
+          rm -rf "$package/tools/bm-device-bridge/data"
+          rm -f "$package/tools/bm-device-bridge/employee-map.json"
+          (cd "$package" && find . -type f -print0 | sort -z | \
+            xargs -0 sha256sum > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
-          name: BM-Device-Bridge-v0.3.0
-          path: |
-            ${{ runner.temp }}/BM-Device-Bridge-v0.3.0.zip
-            ${{ runner.temp }}/BM-Device-Bridge-v0.3.0.sha256
+          name: BMA-Terminal-Stack-v0.3.1
+          path: ${{ runner.temp }}/BMA-Terminal-Stack-v0.3.1
       - name: Validate official BM7 brand assets
         run: node infra/scripts/validate-brand-assets.mjs
       - name: Scan tracked files for credentials
@@ -47,7 +50,9 @@ jobs:
         shell: pwsh
         run: |
           $failed = $false
-          Get-ChildItem infra/scripts -Filter *.ps1 | ForEach-Object {
+          $scriptFiles = @(Get-ChildItem infra/scripts -Filter *.ps1) +
+            @(Get-Item Deploy-BMA-Terminal-v0.3.1.ps1)
+          $scriptFiles | ForEach-Object {
             $tokens = $null
             $parseErrors = $null
             [System.Management.Automation.Language.Parser]::ParseFile(
@@ -128,6 +133,10 @@ jobs:
             sleep 1
           done
           curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health >/dev/null
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health/details | \
+            grep --quiet '"version":"0.3.1"'
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health/details | \
+            grep --quiet 'EMPLOYEE_SCAN'
           admin_login_html=$(curl --fail --silent --cookie-jar /tmp/bma-admin.cookies \
             http://127.0.0.1:8790/bmapp-ci/admin/login)
           printf '%s' "$admin_login_html" | grep --quiet "BMA Admin"

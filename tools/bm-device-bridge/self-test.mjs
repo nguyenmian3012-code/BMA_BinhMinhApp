@@ -152,7 +152,7 @@ try {
   }, "Sự kiện chưa map không được chuyển sang blocked");
 
   const health = await fetch(`http://127.0.0.1:${bridgePort}/health`).then((response) => response.json());
-  assert.equal(health.version, "0.3.0");
+  assert.equal(health.version, "0.3.1");
   assert.equal(health.direction, "AUTO");
   assert.equal(health.mode, "forwarding-staging");
   assert.equal(health.received, 5);

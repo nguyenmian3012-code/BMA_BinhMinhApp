@@ -63,7 +63,7 @@ else { Remove-Item Env:BM_FORWARD_REPLAY -ErrorAction SilentlyContinue }
 
 Remove-Item Env:BM_ATTENDANCE_DIRECTION -ErrorAction SilentlyContinue
 
-Write-Host "BM Device Bridge v0.3.0 -> BMA STAGING" -ForegroundColor Cyan
+Write-Host "BM Device Bridge v0.3.1 -> BMA STAGING" -ForegroundColor Cyan
 Write-Host "Direction: AUTO (BMA quyet dinh theo tung nhan vien); Person field: $PersonField" -ForegroundColor Cyan
 Write-Host "Debounce: $DedupeSeconds giay" -ForegroundColor Cyan
 if (-not $ReplayShadow) {

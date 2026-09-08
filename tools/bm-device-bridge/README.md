@@ -1,4 +1,4 @@
-# BM Device Bridge v0.3.0
+# BM Device Bridge v0.3.1
 
 Bridge nhận callback HTTP từ Terminal qua LAN, commit dữ liệu gốc vào SQLite rồi mới trả `200 OK`. Khi bật staging, Bridge chuyển callback thành `EMPLOYEE_SCAN` trung tính và gửi HTTPS vào BMA. BMA quyết định Entry/Exit theo ca và session riêng của từng nhân viên. Terminal và Bridge không ghi PostgreSQL trực tiếp.
 
@@ -21,7 +21,7 @@ Luồng dữ liệu:
 
 1. Dừng Bridge cũ bằng `Ctrl+C`.
 2. Sao lưu nguyên thư mục `data`.
-3. Chép đè các file chương trình v0.3.0, tuyệt đối không xóa `data`.
+3. Chép đè các file chương trình v0.3.1, tuyệt đối không xóa `data`.
 4. Chạy:
 
    ```powershell
@@ -34,7 +34,7 @@ Luồng dữ liệu:
    Invoke-RestMethod http://127.0.0.1:8789/health
    ```
 
-Kết quả cần có `version: 0.3.0`, `mode: shadow-local-only`, heartbeat tiếp tục tăng và dữ liệu cũ còn nguyên.
+Kết quả cần có `version: 0.3.1`, `mode: shadow-local-only`, heartbeat tiếp tục tăng và dữ liệu cũ còn nguyên.
 
 ## 2. Xuất mẫu callback để khóa parser
 

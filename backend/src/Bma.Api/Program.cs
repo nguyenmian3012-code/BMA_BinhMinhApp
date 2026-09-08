@@ -185,6 +185,12 @@ if (builder.Configuration.GetValue("Database:MigrateOnStartup", true))
 }
 
 app.MapHealthChecks("/health").AllowAnonymous();
+app.MapGet("/health/details", () => Results.Ok(new
+{
+    ok = true,
+    version = "0.3.1",
+    supported_event_types = CanonicalEventTypes.Supported.Order()
+})).AllowAnonymous();
 app.MapBmaAuth();
 app.MapBmaIntegration();
 app.MapBmaReadApi();
