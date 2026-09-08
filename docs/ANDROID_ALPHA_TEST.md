@@ -11,7 +11,7 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 - Android artifact build metadata must contain:
   - package: `com.binhminh.bma`
   - ABI: `arm64-v8a`
-  - API: `https://gateway.abmtlab.com/bmapp-staging/api/v1`
+  - API: `https://gateway.redtigerhead.com/bmapp-staging/api/v1`
 - Use synthetic Alpha accounts only. Do not put passwords or keys in chat.
 - Connect exactly one Android pilot device with USB debugging authorized.
 

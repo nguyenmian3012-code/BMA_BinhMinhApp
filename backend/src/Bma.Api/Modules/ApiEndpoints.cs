@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Bma.Authentication;
 using Bma.Data;
 using Bma.Domain;
+using Bma.Integration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,25 +46,55 @@ public static class ApiEndpoints
             EtagResults.Json(await service.GetLatestAsync(ct)));
 
         group.MapGet("/attendance/me", async (ClaimsPrincipal principal, BmaDbContext db,
-            CancellationToken ct) =>
+            AttendancePolicy attendance, CancellationToken ct) =>
         {
             var userId = UserId(principal);
             var employeeCode = await db.AppUsers.AsNoTracking().Where(x => x.Id == userId)
                 .Select(x => x.EmployeeCode).SingleAsync(ct);
+            var month = attendance.CurrentMonth(DateTimeOffset.UtcNow);
             if (string.IsNullOrWhiteSpace(employeeCode))
-                return EtagResults.Json(new { items = Array.Empty<object>(), employee_code = employeeCode });
+                return EtagResults.Json(new
+                {
+                    items = Array.Empty<object>(),
+                    employee_code = employeeCode,
+                    shift_name = attendance.Options.ShiftName,
+                    month = month.Key,
+                    monthly_total_minutes = 0,
+                    monthly_total_hours = 0,
+                    monthly_remaining_minutes = 0
+                });
             var sessions = await db.AttendanceSessions.AsNoTracking()
-                .Where(x => x.EmployeeId == employeeCode).OrderByDescending(x => x.EntryAt ?? x.ExitAt)
-                .Take(60).Select(x => new
+                .Where(x => x.EmployeeId == employeeCode && x.WorkDate != null)
+                .OrderByDescending(x => x.WorkDate)
+                .Take(5).Select(x => new
                 {
                     x.Id,
+                    x.WorkDate,
                     x.EntryAt,
                     x.ExitAt,
-                    status = x.Status.ToString().ToUpperInvariant(),
+                    x.ShiftCode,
+                    x.CreditedMinutes,
+                    status = x.Status == AttendanceSessionStatus.NeedsReview
+                        ? "NEEDS_REVIEW"
+                        : x.Status.ToString().ToUpperInvariant(),
                     x.ReviewReason,
                     payroll_approved = x.ApprovedAt != null
                 }).ToListAsync(ct);
-            return EtagResults.Json(new { items = sessions, employee_code = employeeCode });
+            var monthlyTotal = await db.AttendanceSessions.AsNoTracking()
+                .Where(x => x.EmployeeId == employeeCode && x.WorkDate != null &&
+                            x.WorkDate.Value >= month.Start && x.WorkDate.Value < month.End)
+                .Select(x => (int?)x.CreditedMinutes)
+                .SumAsync(ct) ?? 0;
+            return EtagResults.Json(new
+            {
+                items = sessions,
+                employee_code = employeeCode,
+                shift_name = attendance.Options.ShiftName,
+                month = month.Key,
+                monthly_total_minutes = monthlyTotal,
+                monthly_total_hours = monthlyTotal / 60,
+                monthly_remaining_minutes = monthlyTotal % 60
+            });
         });
 
         group.MapGet("/profile/me", async (ClaimsPrincipal principal, BmaDbContext db,

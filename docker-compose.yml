@@ -26,7 +26,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
-      AllowedHosts: ${BMA_ALLOWED_HOSTS:-gateway.abmtlab.com;localhost;127.0.0.1}
+      AllowedHosts: ${BMA_ALLOWED_HOSTS:-gateway.redtigerhead.com;gateway.abmtlab.com;localhost;127.0.0.1}
       App__PathBase: ${BMA_PATH_BASE:-/bmapp}
       ConnectionStrings__Bma: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__SigningKey: ${BMA_JWT_SIGNING_KEY}

@@ -35,6 +35,7 @@ PostgreSQL và Razor Pages Admin.
 /backend      BMA Core API, workers, Admin và PostgreSQL migrations
 /contracts    OpenAPI, JSON Schema và payload mẫu
 /infra        Docker, Cloudflare, Gateway và script vận hành
+/tools        BM Device Bridge và công cụ biên tại nhà máy
 /docs         Whitepaper, ADR, data dictionary, roadmap và runbook
 /assets       Tài sản nhận diện chính thức dùng lại cho app và website
 ```

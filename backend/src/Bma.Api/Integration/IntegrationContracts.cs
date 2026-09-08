@@ -7,6 +7,7 @@ public static class CanonicalEventTypes
 {
     public const string MotorStateChanged = "MOTOR_STATE_CHANGED";
     public const string QualityResultPublished = "QUALITY_RESULT_PUBLISHED";
+    public const string EmployeeScan = "EMPLOYEE_SCAN";
     public const string EmployeeEntry = "EMPLOYEE_ENTRY";
     public const string EmployeeExit = "EMPLOYEE_EXIT";
     public const string ProductionMassRecorded = "PRODUCTION_MASS_RECORDED";
@@ -16,6 +17,7 @@ public static class CanonicalEventTypes
     [
         MotorStateChanged,
         QualityResultPublished,
+        EmployeeScan,
         EmployeeEntry,
         EmployeeExit,
         ProductionMassRecorded,

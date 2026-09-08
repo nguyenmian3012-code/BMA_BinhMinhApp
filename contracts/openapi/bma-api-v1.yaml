@@ -67,7 +67,11 @@ paths:
       summary: Read the authenticated employee attendance sessions
       security: [{ bearerAuth: [] }]
       responses:
-        '200': { description: Sessions }
+        '200':
+          description: Five latest workdays and current-month credited time
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceSummary' }
   /profile/me:
     get:
       summary: Read the authenticated employee profile
@@ -130,7 +134,9 @@ components:
       required: [event_id, event_type, source_system, occurred_at, schema_version, payload, payload_hash]
       properties:
         event_id: { type: string, maxLength: 100 }
-        event_type: { type: string }
+        event_type:
+          type: string
+          enum: [MOTOR_STATE_CHANGED, QUALITY_RESULT_PUBLISHED, EMPLOYEE_SCAN, EMPLOYEE_ENTRY, EMPLOYEE_EXIT, PRODUCTION_MASS_RECORDED, ANNOUNCEMENT_PUBLISHED]
         source_system: { type: string, maxLength: 64 }
         source_device_id: { type: [string, 'null'] }
         sequence: { type: [integer, 'null'] }
@@ -140,3 +146,30 @@ components:
         payload: { type: object }
         payload_hash: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
         signature: { type: [string, 'null'] }
+    AttendanceSummary:
+      type: object
+      required: [employee_code, shift_name, month, monthly_total_minutes, monthly_total_hours, monthly_remaining_minutes, items]
+      properties:
+        employee_code: { type: [string, 'null'] }
+        shift_name: { type: string }
+        month: { type: string, pattern: '^\d{4}-\d{2}$' }
+        monthly_total_minutes: { type: integer, minimum: 0 }
+        monthly_total_hours: { type: integer, minimum: 0 }
+        monthly_remaining_minutes: { type: integer, minimum: 0, maximum: 59 }
+        items:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/AttendanceDay' }
+    AttendanceDay:
+      type: object
+      required: [id, work_date, shift_code, credited_minutes, status, payroll_approved]
+      properties:
+        id: { type: string, format: uuid }
+        work_date: { type: string, format: date }
+        entry_at: { type: [string, 'null'], format: date-time }
+        exit_at: { type: [string, 'null'], format: date-time }
+        shift_code: { type: [string, 'null'] }
+        credited_minutes: { type: integer, minimum: 0 }
+        status: { type: string, enum: [PROVISIONAL, CONFIRMED, NEEDS_REVIEW, APPROVED] }
+        review_reason: { type: [string, 'null'] }
+        payroll_approved: { type: boolean }

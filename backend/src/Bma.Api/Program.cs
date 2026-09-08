@@ -28,6 +28,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.Section));
 builder.Services.Configure<GatewayOptions>(builder.Configuration.GetSection(GatewayOptions.Section));
 builder.Services.Configure<PlantOptions>(builder.Configuration.GetSection(PlantOptions.Section));
+builder.Services.Configure<AttendanceOptions>(builder.Configuration.GetSection(AttendanceOptions.Section));
 
 var connection = builder.Configuration.GetConnectionString("Bma");
 if (string.IsNullOrWhiteSpace(connection))
@@ -137,11 +138,13 @@ builder.Services.AddScoped<AuditWriter>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IntegrationIngestionService>();
 builder.Services.AddScoped<CanonicalEventProjector>();
+builder.Services.AddSingleton<AttendancePolicy>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<RecoveryService>();
 builder.Services.AddHostedService<AdminBootstrapService>();
 builder.Services.AddHostedService<OutboxProjectionWorker>();
 builder.Services.AddHostedService<GatewayReconciliationWorker>();
+builder.Services.AddHostedService<AttendanceReconciliationWorker>();
 
 var app = builder.Build();
 app.UseExceptionHandler();

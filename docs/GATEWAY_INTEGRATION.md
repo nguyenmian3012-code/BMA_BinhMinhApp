@@ -79,19 +79,22 @@ Chi tiết triển khai phía Gateway nằm tại
 Terminal chỉ gọi listener LAN `192.168.1.99:8789`. Bridge commit callback gốc
 vào SQLite trước khi ACK, sau đó gửi canonical event qua HTTPS tới staging:
 
-`POST https://gateway.abmtlab.com/bmapp-staging/api/v1/integrations/events`
+`POST https://gateway.redtigerhead.com/bmapp-staging/api/v1/integrations/events`
 
 Bridge dùng đúng `X-BMA-Gateway-Key` và `Idempotency-Key`. ID người trên
 Terminal phải được map tường minh sang `employee_code` BMA; không dùng tên hiển
-thị, điện thoại hoặc device ID làm `employee_id`.
+thị, điện thoại hoặc device ID làm `employee_id`. Bridge v0.3 phát
+`EMPLOYEE_SCAN` trung tính để một Terminal phục vụ đồng thời mọi nhân viên.
 
-Thiết bị hiện đặt `Lối vào/Lối ra = Nhập`, vì vậy chỉ phát
-`EMPLOYEE_ENTRY`. `EMPLOYEE_EXIT` chỉ được phát khi operator cấu hình rõ hướng
-`OUT`; BMA không suy diễn hướng từ giờ, vị trí hoặc lượt trước.
+BMA quyết định Entry/Exit theo `employee_id`, ngày làm việc và khung Ca Hành
+Chính: Thứ Hai-Thứ Bảy, `07:00-17:00`, nghỉ không tính công `11:00-13:00`, vào
+sớm tối đa 30 phút và ra muộn tối đa 20 phút. Thiếu một lượt được đối soát thành
+50% ca (`240` phút mặc định) và gắn `MISSING_ENTRY` hoặc `MISSING_EXIT`.
 
 Mỗi canonical event được lưu vào `raw_integration_events`. Outbox projector ghi
-`attendance_events` và ghép `attendance_sessions` trong PostgreSQL. Terminal và
-Bridge không có tài khoản SQL.
+`attendance_events` và ghép một `attendance_sessions` cho mỗi nhân viên/ngày
+trong PostgreSQL. Terminal và Bridge không có tài khoản SQL; BMA API là writer
+duy nhất để giữ validation, idempotency và audit tại cùng biên giao dịch.
 
 Kiểm tra toàn bộ ba lớp dữ liệu trên máy staging:
 

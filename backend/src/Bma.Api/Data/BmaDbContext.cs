@@ -144,6 +144,11 @@ public sealed class BmaDbContext(DbContextOptions<BmaDbContext> options) : DbCon
             e.ToTable("attendance_sessions");
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.EmployeeId, x.EntryAt, x.ExitAt });
+            e.HasIndex(x => new { x.EmployeeId, x.WorkDate })
+                .HasDatabaseName("ux_attendance_session_employee_work_date").IsUnique()
+                .HasFilter("work_date IS NOT NULL");
+            e.Property(x => x.WorkDate).HasColumnType("date");
+            e.Property(x => x.ShiftCode).HasMaxLength(32);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         });
 

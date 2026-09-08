@@ -178,6 +178,9 @@ public sealed class AttendanceSession
     public DateTimeOffset? ExitAt { get; set; }
     public string? EntryEventId { get; set; }
     public string? ExitEventId { get; set; }
+    public DateOnly? WorkDate { get; set; }
+    public string? ShiftCode { get; set; }
+    public int CreditedMinutes { get; set; }
     public AttendanceSessionStatus Status { get; set; }
     public string? ReviewReason { get; set; }
     public Guid? ApprovedBy { get; set; }

@@ -5,8 +5,9 @@
 
 ## Decision
 
-Điện thoại cá nhân, Wi-Fi, GPS và movement không xác định Entry/Exit. Một hệ
-thống vật lý độc lập phát immutable event; BMA đối chiếu, ghép session và audit.
+Điện thoại cá nhân, Wi-Fi, GPS và movement không xác định Entry/Exit. Terminal
+vật lý phát `EMPLOYEE_SCAN` bất biến qua Bridge. BMA đối chiếu ca và session của
+từng nhân viên, quyết định Entry/Exit, ghép session và audit trong PostgreSQL.
 
 ## Consequence
 

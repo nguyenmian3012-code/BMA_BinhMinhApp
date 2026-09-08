@@ -15,6 +15,17 @@ class AttendanceScreen extends StatelessWidget {
     builder: (context, data) {
       final items = (data['items'] as List? ?? const []).whereType<Map<String, dynamic>>().toList();
       return [
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.calendar_month_outlined),
+            title: Text('Tổng công tháng ${data['month'] ?? '--'}'),
+            subtitle: Text(data['shift_name']?.toString() ?? 'Ca làm việc'),
+            trailing: Text(
+              BmaDisplay.durationMinutes(data['monthly_total_minutes']),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+        ),
         const Card(
           child: ListTile(
             leading: Icon(Icons.verified_user_outlined),
@@ -27,12 +38,20 @@ class AttendanceScreen extends StatelessWidget {
         else
           ...items.map((item) => Card(
             child: ListTile(
-              leading: Icon(item['status'] == 'NEEDS_REVIEW' ? Icons.report_problem_outlined : Icons.access_time),
-              title: Text('${BmaDisplay.dateTime(item['entry_at'])} → ${BmaDisplay.dateTime(item['exit_at'])}'),
-              subtitle: Text('${item['status']}${item['review_reason'] == null ? '' : ' · ${item['review_reason']}'}'),
-              trailing: item['payroll_approved'] == true
-                  ? const Icon(Icons.verified, color: Colors.green)
-                  : const Icon(Icons.hourglass_empty),
+              leading: Icon(
+                item['status'] == 'NEEDS_REVIEW'
+                    ? Icons.report_problem_outlined
+                    : Icons.access_time,
+              ),
+              title: Text(
+                '${BmaDisplay.date(item['work_date'])} · '
+                '${BmaDisplay.time(item['entry_at'])} → ${BmaDisplay.time(item['exit_at'])}',
+              ),
+              subtitle: Text(BmaDisplay.attendanceStatus(
+                item['status'],
+                item['review_reason'],
+              )),
+              trailing: Text(BmaDisplay.durationMinutes(item['credited_minutes'])),
             ),
           )),
       ];

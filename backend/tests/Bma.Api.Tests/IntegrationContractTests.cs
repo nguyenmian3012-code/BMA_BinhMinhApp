@@ -41,6 +41,7 @@ public sealed class IntegrationContractTests
         var hash = IntegrationIngestionService.ComputePayloadHash(payload.RootElement);
 
         Assert.Matches("^[a-f0-9]{64}$", hash);
+        Assert.Contains(CanonicalEventTypes.EmployeeScan, CanonicalEventTypes.Supported);
         Assert.Contains(CanonicalEventTypes.EmployeeEntry, CanonicalEventTypes.Supported);
         Assert.Contains(CanonicalEventTypes.EmployeeExit, CanonicalEventTypes.Supported);
     }

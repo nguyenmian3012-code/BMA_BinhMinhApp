@@ -23,6 +23,22 @@ jobs:
           node-version: 24
       - name: Validate contracts and payload hashes
         run: node infra/scripts/validate-contracts.mjs
+      - name: Test BM Device Bridge v0.3.0
+        working-directory: tools/bm-device-bridge
+        run: npm test
+      - name: Package BM Device Bridge v0.3.0
+        run: |
+          cd tools
+          zip -r "$RUNNER_TEMP/BM-Device-Bridge-v0.3.0.zip" bm-device-bridge \
+            -x '*/data/*' '*/employee-map.json'
+          sha256sum "$RUNNER_TEMP/BM-Device-Bridge-v0.3.0.zip" \
+            > "$RUNNER_TEMP/BM-Device-Bridge-v0.3.0.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BM-Device-Bridge-v0.3.0
+          path: |
+            ${{ runner.temp }}/BM-Device-Bridge-v0.3.0.zip
+            ${{ runner.temp }}/BM-Device-Bridge-v0.3.0.sha256
       - name: Validate official BM7 brand assets
         run: node infra/scripts/validate-brand-assets.mjs
       - name: Scan tracked files for credentials
@@ -231,7 +247,7 @@ jobs:
           BMA_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           flutter build apk --profile --target-platform android-arm64 \
-            --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp-staging/api/v1
+            --dart-define=BMA_API_BASE_URL=https://gateway.redtigerhead.com/bmapp-staging/api/v1
           artifact_dir="$RUNNER_TEMP/bma-alpha"
           short_sha=$(printf '%s' "$BMA_SOURCE_SHA" | cut -c1-7)
           apk_name="BMA-Alpha-$short_sha-arm64.apk"
@@ -243,7 +259,7 @@ jobs:
             echo "package_id=com.binhminh.bma"
             echo "build_mode=profile"
             echo "target_abi=arm64-v8a"
-            echo "api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1"
+            echo "api_base_url=https://gateway.redtigerhead.com/bmapp-staging/api/v1"
             echo "brand_asset=BM7-official"
             echo "signing_key=stable-alpha-debug-v1"
             echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -260,7 +276,7 @@ jobs:
           grep --quiet 'package_id=com.binhminh.bma' BUILD_INFO.txt
           grep --quiet 'build_mode=profile' BUILD_INFO.txt
           grep --quiet 'target_abi=arm64-v8a' BUILD_INFO.txt
-          grep --quiet 'api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1' BUILD_INFO.txt
+          grep --quiet 'api_base_url=https://gateway.redtigerhead.com/bmapp-staging/api/v1' BUILD_INFO.txt
           grep --quiet 'brand_asset=BM7-official' BUILD_INFO.txt
           grep --quiet 'signing_key=stable-alpha-debug-v1' BUILD_INFO.txt
       - name: Upload Android Staging Alpha APK when quota is available

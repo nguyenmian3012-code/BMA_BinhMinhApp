@@ -20,6 +20,7 @@
       "enum": [
         "MOTOR_STATE_CHANGED",
         "QUALITY_RESULT_PUBLISHED",
+        "EMPLOYEE_SCAN",
         "EMPLOYEE_ENTRY",
         "EMPLOYEE_EXIT",
         "PRODUCTION_MASS_RECORDED",

@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "https://gateway.abmtlab.com/bmapp-staging",
+    [string]$BaseUrl = "https://gateway.redtigerhead.com/bmapp-staging",
     [string]$EnvFile = ".env.staging",
     [string]$ProjectName = "bma-staging",
     [int]$ProjectionTimeoutSeconds = 30
