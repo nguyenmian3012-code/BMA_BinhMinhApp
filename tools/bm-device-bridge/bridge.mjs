@@ -16,6 +16,7 @@ const occurredAtField = (process.env.BM_OCCURRED_AT_FIELD || "").trim();
 const confidenceField = (process.env.BM_CONFIDENCE_FIELD || "").trim();
 const employeeMapPath = (process.env.BM_EMPLOYEE_MAP_PATH || "").trim();
 const dedupeSeconds = Number(process.env.BM_DEDUPE_SECONDS || 120);
+const rawRetentionDays = Number(process.env.BM_RAW_RETENTION_DAYS || 30);
 const replayShadow = process.env.BM_FORWARD_REPLAY === "1";
 const allowInsecureLocalGateway = process.env.BM_ALLOW_INSECURE_LOCAL_GATEWAY === "1";
 const allowedIps = new Set(
@@ -31,6 +32,9 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 if (!Number.isInteger(dedupeSeconds) || dedupeSeconds < 0 || dedupeSeconds > 3600) {
   throw new Error("BM_DEDUPE_SECONDS phải nằm trong khoảng 0-3600");
+}
+if (!Number.isInteger(rawRetentionDays) || rawRetentionDays < 1 || rawRetentionDays > 3650) {
+  throw new Error("BM_RAW_RETENTION_DAYS phải nằm trong khoảng 1-3650");
 }
 
 let forwarding = null;
@@ -186,6 +190,25 @@ const requeueBlocked = db.prepare(`
   SET state = 'pending', attempt_count = 0, next_attempt_at = ?, last_error = NULL
   WHERE state = 'blocked'
 `);
+const deleteExpiredDeliveryGuards = db.prepare(`
+  DELETE FROM delivery_guard WHERE occurred_at < ?
+`);
+const deleteExpiredOutbox = db.prepare(`
+  DELETE FROM outbox
+  WHERE state IN ('sent', 'deduplicated', 'shadowed') AND event_id IN (
+    SELECT o.event_id
+    FROM outbox o
+    JOIN raw_events r ON r.event_id = o.event_id
+    WHERE r.received_at < ?
+  )
+`);
+const deleteExpiredRawEvents = db.prepare(`
+  DELETE FROM raw_events
+  WHERE received_at < ? AND (
+    event_kind = 'heartbeat' OR
+    NOT EXISTS (SELECT 1 FROM outbox o WHERE o.event_id = raw_events.event_id)
+  )
+`);
 
 let forwardAfterSequence = 0;
 if (forwarding) {
@@ -209,14 +232,36 @@ function isLocalhost(address) {
 }
 
 function safeHeaders(headers) {
+  const sensitiveName = /(authorization|cookie|token|secret|api[-_]?key|signature)/i;
   return Object.fromEntries(
     Object.entries(headers).map(([key, value]) => [
       key,
-      ["authorization", "cookie", "proxy-authorization"].includes(key.toLowerCase())
-        ? "[REDACTED]"
-        : value,
+      sensitiveName.test(key) ? "[REDACTED]" : value,
     ]),
   );
+}
+
+function cleanupRetention() {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - rawRetentionDays * 86_400_000).toISOString();
+  const cleanedAt = now.toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const guards = deleteExpiredDeliveryGuards.run(cutoff);
+    const outbox = deleteExpiredOutbox.run(cutoff);
+    const raw = deleteExpiredRawEvents.run(cutoff);
+    upsertState.run("last_cleanup_at", cleanedAt, cleanedAt);
+    db.exec("COMMIT");
+    return {
+      cutoff,
+      deliveryGuards: Number(guards.changes),
+      outboxRows: Number(outbox.changes),
+      rawEvents: Number(raw.changes),
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 async function readBody(request) {
@@ -275,7 +320,7 @@ function sendJson(response, status, body) {
 
 const server = createServer(async (request, response) => {
   const sourceIp = normalizeIp(request.socket.remoteAddress);
-  const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+  const url = new URL(request.url || "/", "http://bridge.local");
 
   if (request.method === "GET" && url.pathname === "/health") {
     if (!isLocalhost(sourceIp) && !allowedIps.has(sourceIp)) {
@@ -284,7 +329,7 @@ const server = createServer(async (request, response) => {
     const counts = statusCounts.get();
     return sendJson(response, 200, {
       ok: true,
-      version: "0.3.1",
+      version: "0.3.2",
       mode: forwarding ? "forwarding-staging" : "shadow-local-only",
       deviceId,
       direction: forwarding ? "AUTO" : null,
@@ -302,6 +347,8 @@ const server = createServer(async (request, response) => {
       forwardAfterSequence: forwarding ? forwardAfterSequence : null,
       mappedPeople: forwarding ? forwarding.employeeMap.size : 0,
       dedupeSeconds: forwarding ? dedupeSeconds : null,
+      rawRetentionDays,
+      lastCleanupAt: getState.get("last_cleanup_at")?.value ?? null,
     });
   }
 
@@ -354,6 +401,13 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, { ok: true, requeued: Number(result.changes) });
   }
 
+  if (request.method === "POST" && url.pathname === "/control/cleanup") {
+    if (!isLocalhost(sourceIp)) {
+      return sendJson(response, 403, { ok: false, error: "LOCALHOST_ONLY" });
+    }
+    return sendJson(response, 200, { ok: true, ...cleanupRetention() });
+  }
+
   if (request.method !== "POST" || !url.pathname.startsWith("/Subscribe/")) {
     return sendJson(response, 404, { ok: false, error: "CALLBACK_ROUTE_NOT_FOUND" });
   }
@@ -377,6 +431,11 @@ const server = createServer(async (request, response) => {
     });
   }
 });
+
+server.requestTimeout = 15_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 64;
 
 function retryableStatus(status) {
   return status === 408 || status === 429 || status >= 500;
@@ -483,19 +542,30 @@ async function flushOutbox() {
 
 const flushTimer = setInterval(flushOutbox, 2_000);
 flushTimer.unref();
+cleanupRetention();
+const cleanupTimer = setInterval(() => {
+  try {
+    cleanupRetention();
+  } catch (error) {
+    console.error(new Date().toISOString(), "Retention cleanup failed:", error);
+  }
+}, 6 * 60 * 60 * 1_000);
+cleanupTimer.unref();
 
 server.listen(port, host, () => {
-  console.log(`BM Device Bridge v0.3.1 đang nghe tại http://${host}:${port}`);
+  console.log(`BM Device Bridge v0.3.2 đang nghe tại http://${host}:${port}`);
   console.log(`Terminal được phép: ${[...allowedIps].join(", ")}`);
   console.log(`Chế độ: ${forwarding ? "STAGING AUTO" : "SHADOW (chỉ lưu cục bộ)"}`);
   if (forwarding) {
     console.log(`Chỉ chuyển tiếp sự kiện có sequence > ${forwardAfterSequence}; đã map ${forwarding.employeeMap.size} nhân viên.`);
     console.log(`Chống trùng cùng người/thiết bị: ${dedupeSeconds} giây.`);
   }
+  console.log(`Raw callback đã xử lý được giữ ${rawRetentionDays} ngày; pending/blocked không bị xóa.`);
 });
 
 function shutdown() {
   clearInterval(flushTimer);
+  clearInterval(cleanupTimer);
   server.close(() => {
     db.close();
     process.exit(0);

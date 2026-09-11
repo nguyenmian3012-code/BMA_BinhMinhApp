@@ -6,7 +6,7 @@ PostgreSQL và Razor Pages Admin.
 
 > Trạng thái: **Engineering Alpha đang triển khai theo Whitepaper V1.0**  
 > Nhánh phát triển hiện tại: `codex/terminal-bridge-v0-3`
-> BM Device Bridge mới nhất: `v0.3.1`
+> BMA Core: `v0.3.1`; BM Device Bridge mới nhất: `v0.3.2`
 > Múi giờ nghiệp vụ: `Asia/Ho_Chi_Minh`  
 > Package/bundle ID dự kiến: `com.binhminh.bma`
 
@@ -44,11 +44,11 @@ PostgreSQL và Razor Pages Admin.
 
 ## Một lệnh triển khai Terminal staging
 
-Giải nén `BMA-Terminal-Stack-v0.3.1`, giữ nguyên `.env.staging`, `data` và
+Giải nén `BMA-Terminal-Stack-v0.3.2`, giữ nguyên `.env.staging`, `data` và
 `employee-map.json`, rồi chạy:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\Deploy-BMA-Terminal-v0.3.1.ps1
+powershell.exe -ExecutionPolicy Bypass -File .\Deploy-BMA-Terminal-v0.3.2.ps1
 ```
 
 Script deploy BMA, kiểm tra tương thích local/public, nâng cấp và khởi động
@@ -61,7 +61,7 @@ Terminal chỉ xác nhận **ai** và **lúc nào**. Bridge lưu callback gốc 
 map mã người sang `employee_code`, chống lặp trong 120 giây rồi gửi một canonical
 event trung tính `EMPLOYEE_SCAN`. Bridge không gửi và không tự đoán `IN/OUT`.
 Các event `EMPLOYEE_ENTRY/EMPLOYEE_EXIT` vẫn được BMA nhận để tương thích nguồn
-cũ, nhưng không thuộc luồng Terminal/Bridge v0.3.1.
+cũ, nhưng không thuộc luồng Terminal/Bridge v0.3.2.
 
 BMA phân loại riêng cho từng nhân viên và ngày làm việc theo giờ Việt Nam:
 
@@ -80,7 +80,7 @@ không thay đổi hướng chấm công.
 
 ### Khả năng mở rộng ca cá nhân
 
-`v0.3.1` hiện chỉ dùng một **Ca Hành Chính** toàn cục từ cấu hình. Đây là giới
+BMA hiện chỉ dùng một **Ca Hành Chính** toàn cục từ cấu hình. Đây là giới
 hạn hiện tại, không phải thiết kế cuối. `attendance_sessions.shift_code` đã lưu
 mã ca, nên có thể mở rộng mà không đổi event `EMPLOYEE_SCAN`: thêm danh mục ca,
 gán ca cho nhân viên theo khoảng hiệu lực, rồi resolve ca trước khi phân loại
@@ -164,6 +164,7 @@ Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu qu
 - [Triển khai và rollback](docs/DEPLOYMENT.md)
 - [Nhật ký phân tích lỗi build](docs/BUILD_TROUBLESHOOTING.md)
 - [Các bước thủ công của chủ hệ thống](docs/OWNER_ACTIONS.md)
+- [Kế hoạch ABMT Remote v1.1](docs/ABMT_REMOTE_V1_1_PLAN.md)
 - [Roadmap](docs/ROADMAP.md)
 - [BM7 official app icon](assets/brand/binh-minh/app-icon/README.md)
 

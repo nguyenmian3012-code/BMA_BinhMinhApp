@@ -1,4 +1,4 @@
-# BM Device Bridge v0.3.1
+# BM Device Bridge v0.3.2
 
 Bridge nhận callback HTTP từ Terminal qua LAN, commit dữ liệu gốc vào SQLite rồi mới trả `200 OK`. Khi bật staging, Bridge chuyển callback thành `EMPLOYEE_SCAN` trung tính và gửi HTTPS vào BMA. BMA quyết định Entry/Exit theo ca và session riêng của từng nhân viên. Terminal và Bridge không ghi PostgreSQL trực tiếp.
 
@@ -21,7 +21,7 @@ Luồng dữ liệu:
 
 1. Dừng Bridge cũ bằng `Ctrl+C`.
 2. Sao lưu nguyên thư mục `data`.
-3. Chép đè các file chương trình v0.3.1, tuyệt đối không xóa `data`.
+3. Chép đè các file chương trình v0.3.2, tuyệt đối không xóa `data`.
 4. Chạy:
 
    ```powershell
@@ -34,7 +34,7 @@ Luồng dữ liệu:
    Invoke-RestMethod http://127.0.0.1:8789/health
    ```
 
-Kết quả cần có `version: 0.3.1`, `mode: shadow-local-only`, heartbeat tiếp tục tăng và dữ liệu cũ còn nguyên.
+Kết quả cần có `version: 0.3.2`, `mode: shadow-local-only`, heartbeat tiếp tục tăng và dữ liệu cũ còn nguyên.
 
 ## 2. Xuất mẫu callback để khóa parser
 
@@ -86,6 +86,14 @@ Invoke-RestMethod http://127.0.0.1:8789/health
 - `blocked`: sai mapping, parser, key hoặc contract; Bridge không retry vô hạn.
 - `pending`: đang chờ gửi hoặc retry lỗi mạng/`429`/`5xx`.
 - `shadowed`: dữ liệu cũ được giữ cục bộ nhưng chưa gửi.
+
+`v0.3.2` che các header chứa key/token/secret/signature, giới hạn request HTTP,
+và tự xóa callback đã xử lý quá 30 ngày. Các bản ghi `pending` hoặc `blocked`
+không bị xóa. Chạy cleanup thủ công chỉ từ localhost:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8789/control/cleanup -Method Post
+```
 
 Sau khi sửa mapping/parser, đưa các bản ghi `blocked` về hàng đợi:
 

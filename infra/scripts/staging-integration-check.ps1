@@ -79,6 +79,47 @@ function New-MotorEvent {
     return $messageJson
 }
 
+function New-QualityEvent {
+    param(
+        [Parameter(Mandatory = $true)][string]$EventId,
+        [Parameter(Mandatory = $true)][string]$ResultId
+    )
+
+    $occurredAt = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
+    $payload = [ordered]@{
+        result_id = $ResultId
+        lot_code = "SYNTHETIC-NOT-FOR-PRODUCTION"
+        measured_at = $occurredAt
+        ph = 5.8
+        whiteness = 93.4
+        moisture = 12.4
+        fineness = $null
+        fineness_unit = $null
+        viscosity = 18.6
+        viscosity_unit = $null
+        extra_value = $null
+        product_code = "SYNTHETIC"
+        operator_code = "CI"
+        quality_code = "TEST"
+        customer_code = "INTERNAL"
+    }
+    $payloadJson = ConvertTo-Json -InputObject $payload -Depth 10 -Compress
+    $message = [ordered]@{
+        event_id = $EventId
+        event_type = "QUALITY_RESULT_PUBLISHED"
+        source_system = "BMKCS"
+        source_device_id = "BMKCSLAB-SYNTHETIC"
+        sequence = $null
+        occurred_at = $occurredAt
+        schema_version = "1.0"
+        correlation_id = $EventId
+        payload = $payload
+        payload_hash = Get-Sha256Hex -Text $payloadJson
+        signature = $null
+    }
+    return ConvertTo-Json -InputObject $message -Depth 10 -Compress
+}
+
 function Send-CanonicalEvent {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
@@ -160,6 +201,8 @@ $deviceId = "BMA-STAGING-M1P-INPUT-$runId"
 $motorId = "BM-STAGING-INPUT-$runId"
 $eventOneId = "bma-staging-$runId-seq-1"
 $eventGapId = "bma-staging-$runId-seq-3"
+$qualityEventId = "bmkcs-staging-$runId"
+$qualityResultId = "SYNTHETIC-$runId"
 $endpoint = $BaseUrl.TrimEnd("/") + "/api/v1/integrations/events"
 
 Push-Location $repoRoot
@@ -202,28 +245,40 @@ try {
         throw "Sequence-gap event was not accepted: HTTP $($gapAccepted.HttpStatus), status $($gapAccepted.Status)"
     }
 
+    $qualityJson = New-QualityEvent -EventId $qualityEventId -ResultId $qualityResultId
+    $qualityAccepted = Send-CanonicalEvent -Url $endpoint -GatewayKey $gatewayKey `
+        -EventId $qualityEventId -Body $qualityJson
+    if ($qualityAccepted.HttpStatus -ne 202 -or $qualityAccepted.Status -ne "ACCEPTED") {
+        throw "Synthetic BMKCS result was not accepted: HTTP $($qualityAccepted.HttpStatus), status $($qualityAccepted.Status)"
+    }
+
     $quotedOne = $eventOneId.Replace("'", "''")
     $quotedGap = $eventGapId.Replace("'", "''")
+    $quotedQuality = $qualityEventId.Replace("'", "''")
+    $quotedResult = $qualityResultId.Replace("'", "''")
     $quotedDevice = $deviceId.Replace("'", "''")
     $deadline = [DateTime]::UtcNow.AddSeconds($ProjectionTimeoutSeconds)
     do {
         $rawProjected = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM raw_integration_events WHERE event_id IN ('$quotedOne','$quotedGap') AND processing_state = 'Projected' AND processing_error IS NULL;")
+            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM raw_integration_events WHERE event_id IN ('$quotedOne','$quotedGap','$quotedQuality') AND processing_state = 'Projected' AND processing_error IS NULL;")
         $outboxProcessed = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM outbox_messages o JOIN raw_integration_events r ON o.message_key = r.id::text WHERE r.event_id IN ('$quotedOne','$quotedGap') AND o.processed_at IS NOT NULL AND o.last_error IS NULL;")
+            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM outbox_messages o JOIN raw_integration_events r ON o.message_key = r.id::text WHERE r.event_id IN ('$quotedOne','$quotedGap','$quotedQuality') AND o.processed_at IS NOT NULL AND o.last_error IS NULL;")
         $projectionUpdated = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
             -ComposeProject $ProjectName -Sql "SELECT count(*) FROM motor_state_projections WHERE position = 'INPUT' AND source_event_id = '$quotedGap' AND is_on = false;")
         $gapAudited = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
             -ComposeProject $ProjectName -Sql "SELECT count(*) FROM audit_entries WHERE action = 'INTEGRATION_SEQUENCE_GAP' AND subject_id = '$quotedDevice';")
-        if ($rawProjected -eq 2 -and $outboxProcessed -eq 2 -and `
-            $projectionUpdated -eq 1 -and $gapAudited -ge 1) { break }
+        $qualityProjected = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
+            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM quality_readings WHERE result_id = '$quotedResult' AND source_event_id = '$quotedQuality';")
+        if ($rawProjected -eq 3 -and $outboxProcessed -eq 3 -and `
+            $projectionUpdated -eq 1 -and $gapAudited -ge 1 -and $qualityProjected -eq 1) { break }
         Start-Sleep -Seconds 2
     } while ([DateTime]::UtcNow -lt $deadline)
 
-    if ($rawProjected -ne 2) { throw "Expected 2 projected raw events; found $rawProjected." }
-    if ($outboxProcessed -ne 2) { throw "Expected 2 processed outbox messages; found $outboxProcessed." }
+    if ($rawProjected -ne 3) { throw "Expected 3 projected raw events; found $rawProjected." }
+    if ($outboxProcessed -ne 3) { throw "Expected 3 processed outbox messages; found $outboxProcessed." }
     if ($projectionUpdated -ne 1) { throw "Motor projection did not advance to the sequence-3 OFF event." }
     if ($gapAudited -lt 1) { throw "Sequence gap was not recorded in audit_entries." }
+    if ($qualityProjected -ne 1) { throw "Synthetic BMKCS result was not projected." }
 
     [PSCustomObject]@{
         FirstDelivery = "202 ACCEPTED"
@@ -232,6 +287,8 @@ try {
         OutboxMessagesProcessed = $outboxProcessed
         InputProjection = "OFF @ sequence 3"
         SequenceGapAuditEntries = $gapAudited
+        BmkcsSyntheticResult = $qualityResultId
+        QualityProjection = "PASS"
         Result = "PASS"
     } | Format-List
 }

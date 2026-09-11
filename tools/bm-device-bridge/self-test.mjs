@@ -44,6 +44,7 @@ const child = spawn(process.execPath, [fileURLToPath(new URL("bridge.mjs", impor
     BM_PERSON_FIELD: "body.personId",
     BM_OCCURRED_AT_FIELD: "body.occurredAt",
     BM_DEDUPE_SECONDS: "120",
+    BM_RAW_RETENTION_DAYS: "30",
     BM_EMPLOYEE_MAP_PATH: employeeMapPath,
     BM_ALLOW_INSECURE_LOCAL_GATEWAY: "1",
   },
@@ -83,7 +84,10 @@ try {
       personId: "TEST-001",
       occurredAt: "2026-09-08T00:00:00Z",
     }),
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-terminal-secret": "must-not-be-stored",
+    },
   });
   assert.equal(attendance.status, 200);
   await waitUntil(() => receivedByGateway.length === 1, "Gateway không nhận canonical event");
@@ -111,6 +115,7 @@ try {
   ).then((response) => response.json());
   assert.equal(diagnostics.items.length, 1);
   assert.match(diagnostics.items[0].bodyUtf8Preview, /TEST-001/);
+  assert.equal(diagnostics.items[0].headers["x-terminal-secret"], "[REDACTED]");
 
   const duplicateEvent = await fetch(`http://127.0.0.1:${bridgePort}/Subscribe/verify`, {
     method: "POST",
@@ -151,8 +156,34 @@ try {
     return health.blocked === 1;
   }, "Sự kiện chưa map không được chuyển sang blocked");
 
+  const writer = new DatabaseSync(databasePath);
+  writer.prepare(`
+    INSERT INTO raw_events (
+      event_id, received_at, source_ip, method, path, query_string,
+      event_kind, content_type, headers_json, body, body_sha256
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    "expired-heartbeat",
+    "2020-01-01T00:00:00.000Z",
+    "192.168.1.227",
+    "POST",
+    "/Subscribe/heartbeat",
+    "",
+    "heartbeat",
+    "application/json",
+    "{}",
+    Buffer.from("{}"),
+    createHash("sha256").update("{}").digest("hex"),
+  );
+  writer.close();
+  const cleanup = await fetch(`http://127.0.0.1:${bridgePort}/control/cleanup`, {
+    method: "POST",
+  }).then((response) => response.json());
+  assert.equal(cleanup.ok, true);
+  assert.equal(cleanup.rawEvents, 1);
+
   const health = await fetch(`http://127.0.0.1:${bridgePort}/health`).then((response) => response.json());
-  assert.equal(health.version, "0.3.1");
+  assert.equal(health.version, "0.3.2");
   assert.equal(health.direction, "AUTO");
   assert.equal(health.mode, "forwarding-staging");
   assert.equal(health.received, 5);
@@ -160,6 +191,8 @@ try {
   assert.equal(health.deduplicated, 1);
   assert.equal(health.blocked, 1);
   assert.equal(health.pending, 0);
+  assert.equal(health.rawRetentionDays, 30);
+  assert.ok(health.lastCleanupAt);
   assert.ok(health.lastHeartbeatAt);
 
   const db = new DatabaseSync(databasePath, { readOnly: true });

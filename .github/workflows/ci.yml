@@ -23,15 +23,17 @@ jobs:
           node-version: 24
       - name: Validate contracts and payload hashes
         run: node infra/scripts/validate-contracts.mjs
-      - name: Test BM Device Bridge v0.3.1
+      - name: Test BMKCS legacy adapter synthetic publish
+        run: node infra/gateway/bmkcs-adapter-test.mjs
+      - name: Test BM Device Bridge v0.3.2
         working-directory: tools/bm-device-bridge
         run: npm test
-      - name: Package BMA Terminal Stack v0.3.1
+      - name: Package BMA Terminal Stack v0.3.2
         run: |
-          package="$RUNNER_TEMP/BMA-Terminal-Stack-v0.3.1"
+          package="$RUNNER_TEMP/BMA-Terminal-Stack-v0.3.2"
           mkdir -p "$package/tools"
           cp Directory.Build.props docker-compose.yml .env.example \
-            Deploy-BMA-Terminal-v0.3.1.ps1 "$package/"
+            Deploy-BMA-Terminal-v0.3.2.ps1 "$package/"
           cp -R backend "$package/backend"
           cp -R tools/bm-device-bridge "$package/tools/bm-device-bridge"
           rm -rf "$package/tools/bm-device-bridge/data"
@@ -40,8 +42,8 @@ jobs:
             xargs -0 sha256sum > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
-          name: BMA-Terminal-Stack-v0.3.1
-          path: ${{ runner.temp }}/BMA-Terminal-Stack-v0.3.1
+          name: BMA-Terminal-Stack-v0.3.2
+          path: ${{ runner.temp }}/BMA-Terminal-Stack-v0.3.2
       - name: Validate official BM7 brand assets
         run: node infra/scripts/validate-brand-assets.mjs
       - name: Scan tracked files for credentials
@@ -51,7 +53,8 @@ jobs:
         run: |
           $failed = $false
           $scriptFiles = @(Get-ChildItem infra/scripts -Filter *.ps1) +
-            @(Get-Item Deploy-BMA-Terminal-v0.3.1.ps1)
+            @(Get-Item Deploy-BMA-Terminal-v0.3.1.ps1) +
+            @(Get-Item Deploy-BMA-Terminal-v0.3.2.ps1)
           $scriptFiles | ForEach-Object {
             $tokens = $null
             $parseErrors = $null

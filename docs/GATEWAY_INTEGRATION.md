@@ -12,10 +12,16 @@
 
 ## Hướng tích hợp chính thức
 
-Gateway tiếp tục ACK source sau khi raw record và integration outbox đã commit
-cùng transaction. Một dispatcher gửi canonical event tới:
+BMKCS v2.3 tạm tiếp tục publish vào endpoint cũ:
 
-`POST https://gateway.abmtlab.com/bmapp/api/v1/integrations/events`
+`POST https://gateway.abmtlab.com/api/bmkcslab/v1/results`
+
+Gateway chỉ ACK sau khi raw record và integration outbox đã commit cùng
+transaction. Dispatcher dùng
+[`infra/gateway/bmkcs-adapter.mjs`](../infra/gateway/bmkcs-adapter.mjs) để đổi
+payload cũ, rồi gửi canonical event tới:
+
+`POST https://gateway.redtigerhead.com/bmapp/api/v1/integrations/events`
 
 Headers:
 
@@ -35,6 +41,7 @@ Response `202 accepted` hoặc `200 duplicate` đều là terminal success. `400
 | --- | --- |
 | `id` | envelope `event_id`, payload `result_id` |
 | `ts` | `occurred_at`, payload `measured_at` |
+| `pd` | `payload.production_date` (raw/audit) |
 | `station` | `source_device_id` |
 | `lot` | `payload.lot_code` |
 | `ph` | `payload.ph` |
@@ -42,9 +49,23 @@ Response `202 accepted` hoặc `200 duplicate` đều là terminal success. `400
 | `m` | `payload.moisture` |
 | `v` | `payload.viscosity` |
 | `x` | `payload.extra_value` |
+| `prod` | `payload.product_code` |
+| `op` | `payload.operator_code` |
+| `qc` | `payload.quality_code` |
+| `cust` | `payload.customer_code` |
 
 `fineness` chỉ được set khi BMKCS phát field riêng. Không map `v` hoặc `x` sang
 fineness.
+
+Chạy contract/synthetic adapter test:
+
+```text
+node infra/gateway/bmkcs-adapter-test.mjs
+```
+
+Module mapping đã có trong repo. Source ABMT Gateway production chưa có trong
+repo, nên phần gắn handler/outbox vào endpoint public vẫn cần source đang chạy
+trên MinhComp.
 
 ## MotorNode mapping
 

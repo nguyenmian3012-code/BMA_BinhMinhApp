@@ -7,6 +7,8 @@ param(
     [string]$ConfidenceField = "",
     [ValidateRange(0, 3600)]
     [int]$DedupeSeconds = 120,
+    [ValidateRange(1, 3650)]
+    [int]$RawRetentionDays = 30,
     [string]$EmployeeMapPath = ".\employee-map.json",
     [string]$BmaEnvPath = "C:\ABMT\BMA_BinhMinhApp\.env.staging",
     [switch]$ReplayShadow
@@ -53,6 +55,7 @@ $env:BM_GATEWAY_KEY = $gatewayKey
 $env:BM_PERSON_FIELD = $PersonField
 $env:BM_EMPLOYEE_MAP_PATH = $resolvedMap
 $env:BM_DEDUPE_SECONDS = [string]$DedupeSeconds
+$env:BM_RAW_RETENTION_DAYS = [string]$RawRetentionDays
 
 if ($OccurredAtField) { $env:BM_OCCURRED_AT_FIELD = $OccurredAtField }
 else { Remove-Item Env:BM_OCCURRED_AT_FIELD -ErrorAction SilentlyContinue }
@@ -63,7 +66,7 @@ else { Remove-Item Env:BM_FORWARD_REPLAY -ErrorAction SilentlyContinue }
 
 Remove-Item Env:BM_ATTENDANCE_DIRECTION -ErrorAction SilentlyContinue
 
-Write-Host "BM Device Bridge v0.3.1 -> BMA STAGING" -ForegroundColor Cyan
+Write-Host "BM Device Bridge v0.3.2 -> BMA STAGING" -ForegroundColor Cyan
 Write-Host "Direction: AUTO (BMA quyet dinh theo tung nhan vien); Person field: $PersonField" -ForegroundColor Cyan
 Write-Host "Debounce: $DedupeSeconds giay" -ForegroundColor Cyan
 if (-not $ReplayShadow) {

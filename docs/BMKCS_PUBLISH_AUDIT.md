@@ -7,12 +7,15 @@ Nguồn được rà: `BMKCSLab_MVP_Source_V2.3_UI_COMM_PRINT_NET8_2026-08-12`.
 - Nút Publish ghi `published_results` và `outbox` trong cùng transaction SQLite.
 - Client retry các outbox chưa ACK và chỉ đánh dấu `SYNCED` sau HTTP 2xx.
 - BMA nhận và project được canonical event `QUALITY_RESULT_PUBLISHED`; CI có synthetic gate cho đường này.
-- BMKCS v2.3 **chưa thể gọi thẳng BMA Integration API**: URL mặc định còn là
+- BMKCS v2.3 **không gọi thẳng BMA Integration API**: URL mặc định tiếp tục là
   `https://gateway.abmtlab.com/api/bmkcslab/v1/results`, payload vẫn dùng field
   rút gọn cũ và request không gửi `X-BMA-Gateway-Key`.
 
-Vì vậy local publish/outbox là **CODE READY**. Luồng
-`BMKCS → Gateway adapter → BMA → PostgreSQL → mobile` vẫn **NOT VERIFIED**.
+Vì vậy local publish/outbox và mapper adapter là **CODE READY**. Synthetic test
+`legacy payload → canonical QUALITY_RESULT_PUBLISHED → BMA request` đã PASS.
+Luồng public thật `BMKCS → gateway.abmtlab adapter/outbox → BMA → PostgreSQL →
+mobile` vẫn **NOT VERIFIED** cho tới khi adapter được gắn vào source Gateway
+production trên MinhComp.
 
 ## Adapter bắt buộc
 
@@ -23,6 +26,7 @@ Gateway phải đổi payload BMKCS thành canonical schema `1.0`:
 | `id` | `payload.result_id` |
 | `lot` | `payload.lot_code` |
 | `ts` | `payload.measured_at` |
+| `pd` | `payload.production_date` (raw/audit) |
 | `ph` | `payload.ph` |
 | `w` | `payload.whiteness` |
 | `m` | `payload.moisture` |
@@ -31,7 +35,8 @@ Gateway phải đổi payload BMKCS thành canonical schema `1.0`:
 | `prod/op/qc/cust` | `product_code/operator_code/quality_code/customer_code` |
 | `station` | `source_device_id` |
 
-Adapter cũng phải tạo `event_id`, SHA-256 `payload_hash`, gửi
+Adapter trong [`infra/gateway/bmkcs-adapter.mjs`](../infra/gateway/bmkcs-adapter.mjs)
+giữ `id` làm `event_id`, tạo SHA-256 `payload_hash`, gửi
 `Idempotency-Key` và secret `X-BMA-Gateway-Key`, rồi chuyển đúng HTTP 2xx về
 BMKCS. Không được đánh dấu BMKCS `SYNCED` chỉ vì một endpoint cũ nhận request.
 
@@ -42,3 +47,8 @@ BMKCS. Không được đánh dấu BMKCS `SYNCED` chỉ vì một endpoint cũ 
 3. Xác nhận `raw_integration_events` có `QUALITY_RESULT_PUBLISHED`.
 4. Xác nhận `quality_readings` có đúng `result_id`.
 5. Mở màn Quality trên mobile.
+
+Sau khi origin staging hoạt động, chạy
+`infra/scripts/staging-integration-check.ps1`. Script tạo một kết quả
+`SYNTHETIC-*`, kiểm tra raw event, outbox và `quality_readings`; không dùng mẫu
+synthetic cho quyết định chất lượng sản xuất.
