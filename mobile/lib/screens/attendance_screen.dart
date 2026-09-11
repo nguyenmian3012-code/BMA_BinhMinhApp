@@ -29,8 +29,8 @@ class AttendanceScreen extends StatelessWidget {
         const Card(
           child: ListTile(
             leading: Icon(Icons.verified_user_outlined),
-            title: Text('Nguồn Entry/Exit độc lập'),
-            subtitle: Text('Điện thoại, Wi-Fi và GPS không được dùng để xác định chấm công.'),
+            title: Text('Terminal độc lập · tự phân loại'),
+            subtitle: Text('Bridge gửi EMPLOYEE_SCAN; BMA quyết định Entry/Exit theo ca.'),
           ),
         ),
         if (items.isEmpty)

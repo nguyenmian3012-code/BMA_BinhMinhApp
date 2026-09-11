@@ -172,10 +172,28 @@ public sealed class AuthService(
     {
         var user = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == targetId, ct);
         if (user is null) return false;
+
+        EmployeeProfile? profile = null;
+        if (approved && !string.IsNullOrWhiteSpace(user.EmployeeCode))
+        {
+            profile = await db.EmployeeProfiles.SingleOrDefaultAsync(
+                x => x.EmployeeCode == user.EmployeeCode, ct);
+            if (profile is null || profile.UserId is not null && profile.UserId != user.Id)
+                return false;
+            var otherProfile = await db.EmployeeProfiles.AsNoTracking().AnyAsync(
+                x => x.UserId == user.Id && x.Id != profile.Id, ct);
+            if (otherProfile) return false;
+            profile.UserId = user.Id;
+            profile.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
         var before = user.Status;
         user.Status = approved ? AccountStatus.Approved : AccountStatus.Rejected;
         user.ApprovedAt = approved ? DateTimeOffset.UtcNow : null;
         user.ApprovedBy = actorId;
+        if (profile is not null)
+            audit.Add("ACCOUNT_EMPLOYEE_LINKED", "EMPLOYEE_PROFILE", profile.Id.ToString(), actorId,
+                after: new { profile.EmployeeCode, UserId = user.Id });
         audit.Add(approved ? "ACCOUNT_APPROVED" : "ACCOUNT_REJECTED", "USER",
             user.Id.ToString(), actorId, new { Status = before }, new { user.Status });
         await db.SaveChangesAsync(ct);

@@ -78,6 +78,19 @@ không tính nghỉ trưa `11:00-13:00`, tối đa 480 phút. Thiếu Entry ho�
 cho bảng lương. Mỗi nhân viên có session độc lập nên lượt quét của người khác
 không thay đổi hướng chấm công.
 
+### Khả năng mở rộng ca cá nhân
+
+`v0.3.1` hiện chỉ dùng một **Ca Hành Chính** toàn cục từ cấu hình. Đây là giới
+hạn hiện tại, không phải thiết kế cuối. `attendance_sessions.shift_code` đã lưu
+mã ca, nên có thể mở rộng mà không đổi event `EMPLOYEE_SCAN`: thêm danh mục ca,
+gán ca cho nhân viên theo khoảng hiệu lực, rồi resolve ca trước khi phân loại
+Entry/Exit. Ca đêm và ngoại lệ theo ngày cần được kiểm thử riêng trước khi dùng
+cho bảng lương.
+
+Việc duyệt tài khoản có `employee_code` giờ chỉ thành công khi tìm thấy đúng hồ
+sơ nhân viên chưa liên kết. Migration đi kèm tự gắn lại các tài khoản đã duyệt
+với hồ sơ có cùng mã nhân viên.
+
 ## Endpoint dự kiến
 
 | Route | Chức năng |
@@ -87,10 +100,18 @@ không thay đổi hướng chấm công.
 | `/bmapp/admin/*` | Razor Pages Admin |
 | `/bmapp/health` | Liveness/health |
 
+URL kiểm tra hiện tại:
+
+- Staging: `https://gateway.redtigerhead.com/bmapp-staging/health/details`
+- Production: `https://gateway.redtigerhead.com/bmapp/health/details`
+
 Các route hiện hữu được giữ nguyên:
 
 - `/api/motornode/*` và dashboard `/motornode`
 - `/api/bmkcslab/*` và dashboard `/bmkcs`
+
+Tình trạng publish BMKCS hiện tại được ghi tại
+[`docs/BMKCS_PUBLISH_AUDIT.md`](docs/BMKCS_PUBLISH_AUDIT.md).
 
 ## Chạy backend local
 

@@ -82,6 +82,13 @@ AA-01 through AA-05 and AA-07 through AA-09. For AA-06, use an approved account
 already linked to a synthetic `employee_code`, inject `EMPLOYEE_SCAN` through the
 staging integration API, and verify that attendance remains scoped to that user.
 
+The backend CI smoke test creates that profile/account pair, approves it through
+the Admin flow, checks `/profile/me`, posts an Entry-window and Exit-window
+`EMPLOYEE_SCAN`, then requires a confirmed 480-minute session from
+`/attendance/me`. It also posts one synthetic `QUALITY_RESULT_PUBLISHED` event to
+verify BMA's BMKCS projection path. This proves BMA ingest/projection only; it
+does not prove the BMKCS desktop Gateway adapter is deployed.
+
 Keep `AttendancePhysical` at `DEFERRED` until Terminal `1605063`, Bridge mapping,
 PostgreSQL projection and BMA mobile display can be checked together at the
 factory. A synthetic pass never replaces that physical Entry/Exit gate.
