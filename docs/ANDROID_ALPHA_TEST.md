@@ -5,7 +5,7 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 
 ## Preconditions
 
-- Branch: `feature/engineering-alpha-v1`.
+- Branch: `codex/terminal-bridge-v0-3`.
 - Canonical staging integration must eventually show both
   `PostgreSQL scalar preflight: PASS` and final `Result : PASS`.
 - Android artifact build metadata must contain:
@@ -24,7 +24,7 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 
 ```powershell
 Set-Location "C:\ABMT\BMA_BinhMinhApp"
-git switch feature/engineering-alpha-v1
+git switch codex/terminal-bridge-v0-3
 git pull --ff-only
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -64,6 +64,8 @@ AndroidInstall       : PASS/FAIL
 LoginApproved        : PASS/FAIL
 SessionPersistence   : PASS/FAIL
 FiveMainScreens      : PASS/FAIL
+AttendanceSynthetic : PASS/FAIL/NOT_RUN
+AttendancePhysical  : DEFERRED/PASS/FAIL
 OfflineCache         : PASS/FAIL
 Logout               : PASS/FAIL
 BlockingIssue        : NONE/<short description>
@@ -72,3 +74,14 @@ AndroidAlphaGate     : PASS/FAIL
 
 A failed row keeps the Android gate at **NO-GO** but does not require repeating
 Docker, Cloudflare, database migration or the staging infrastructure smoke test.
+
+## Home-safe pass without the physical Terminal
+
+The Android and backend gates can proceed remotely with synthetic data. Complete
+AA-01 through AA-05 and AA-07 through AA-09. For AA-06, use an approved account
+already linked to a synthetic `employee_code`, inject `EMPLOYEE_SCAN` through the
+staging integration API, and verify that attendance remains scoped to that user.
+
+Keep `AttendancePhysical` at `DEFERRED` until Terminal `1605063`, Bridge mapping,
+PostgreSQL projection and BMA mobile display can be checked together at the
+factory. A synthetic pass never replaces that physical Entry/Exit gate.

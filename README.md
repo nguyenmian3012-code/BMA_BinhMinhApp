@@ -5,6 +5,8 @@ Flutter cho mobile và một BMA Core độc lập chạy ASP.NET Core .NET 10 L
 PostgreSQL và Razor Pages Admin.
 
 > Trạng thái: **Engineering Alpha đang triển khai theo Whitepaper V1.0**  
+> Nhánh phát triển hiện tại: `codex/terminal-bridge-v0-3`
+> BM Device Bridge mới nhất: `v0.3.1`
 > Múi giờ nghiệp vụ: `Asia/Ho_Chi_Minh`  
 > Package/bundle ID dự kiến: `com.binhminh.bma`
 
@@ -12,7 +14,7 @@ PostgreSQL và Razor Pages Admin.
 
 1. Trạng thái hoạt động nhà máy, tổng giờ chạy và lịch chạy tương lai.
 2. Chất lượng thành phẩm và tỷ lệ thu hồi có nguồn dữ liệu rõ ràng.
-3. Chấm công cá nhân từ hệ thống Entry/Exit độc lập.
+3. Chấm công cá nhân từ Terminal độc lập qua `EMPLOYEE_SCAN`.
 4. Vai trò, trách nhiệm, nghĩa vụ, quyền lợi và trọng trách của nhân viên.
 5. Thông báo cho toàn công ty, bộ phận, vai trò hoặc cá nhân.
 
@@ -52,6 +54,29 @@ powershell.exe -ExecutionPolicy Bypass -File .\Deploy-BMA-Terminal-v0.3.1.ps1
 Script deploy BMA, kiểm tra tương thích local/public, nâng cấp và khởi động
 Bridge, rồi requeue callback. Nếu BMA chưa hỗ trợ `EMPLOYEE_SCAN`, script dừng
 trước khi Bridge gửi dữ liệu.
+
+## Quy tắc chấm công `EMPLOYEE_SCAN`
+
+Terminal chỉ xác nhận **ai** và **lúc nào**. Bridge lưu callback gốc vào SQLite,
+map mã người sang `employee_code`, chống lặp trong 120 giây rồi gửi một canonical
+event trung tính `EMPLOYEE_SCAN`. Bridge không gửi và không tự đoán `IN/OUT`.
+Các event `EMPLOYEE_ENTRY/EMPLOYEE_EXIT` vẫn được BMA nhận để tương thích nguồn
+cũ, nhưng không thuộc luồng Terminal/Bridge v0.3.1.
+
+BMA phân loại riêng cho từng nhân viên và ngày làm việc theo giờ Việt Nam:
+
+| Giờ nhận diện | Xử lý mặc định |
+| --- | --- |
+| `06:30-10:59` | Entry |
+| `11:00-12:59` | Bỏ qua trong giờ nghỉ |
+| `13:00-17:20` | Exit |
+| Ngoài khung trên hoặc Chủ Nhật | Bỏ qua và ghi audit |
+
+Lượt Entry mở session tạm. Lượt Exit hợp lệ đóng session và tính phút thực tế,
+không tính nghỉ trưa `11:00-13:00`, tối đa 480 phút. Thiếu Entry hoặc Exit được
+đánh dấu `NeedsReview` và tạm ghi 240 phút; dữ liệu này chưa được tự động dùng
+cho bảng lương. Mỗi nhân viên có session độc lập nên lượt quét của người khác
+không thay đổi hướng chấm công.
 
 ## Endpoint dự kiến
 
@@ -130,4 +155,5 @@ Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu qu
 - Năm luồng mobile đọc được API/fixture và thể hiện trạng thái dữ liệu cũ.
 - Không có secret trong Git; staging/production có database và secret riêng.
 
-Copyright © 2026 Bình Minh. Repository riêng, không cấp license phân phối công khai.
+Copyright © 2026 Bình Minh. Mã nguồn được công khai để review; chưa cấp license
+sử dụng hoặc phân phối.
