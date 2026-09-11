@@ -1,0 +1,18 @@
+{
+  "event_id": "scan-example-001",
+  "event_type": "EMPLOYEE_SCAN",
+  "source_system": "FACE_TERMINAL",
+  "source_device_id": "1605063",
+  "sequence": 108,
+  "occurred_at": "2026-09-08T00:00:00Z",
+  "schema_version": "1.0",
+  "correlation_id": null,
+  "payload": {
+    "employee_id": "BM001",
+    "evidence_ref": "bmbridge://1605063/events/scan-example-001",
+    "verification_method": "FACE_TERMINAL",
+    "confidence": null
+  },
+  "payload_hash": "812d4450c27cd0abce82b8857a4d50dfafa218d862c03e0b21e0f10970040599",
+  "signature": null
+}

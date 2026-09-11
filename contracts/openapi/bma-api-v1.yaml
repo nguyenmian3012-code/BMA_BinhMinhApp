@@ -1,0 +1,175 @@
+openapi: 3.1.0
+info:
+  title: Binh Minh App API
+  version: 1.0.0-alpha
+  description: Versioned API for BMA mobile, Admin and source integrations.
+servers:
+  - url: https://gateway.abmtlab.com/bmapp/api/v1
+paths:
+  /auth/register:
+    post:
+      summary: Register a pending account
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '202':
+          description: Account pending approval
+        '409':
+          description: Username already exists
+  /auth/login:
+    post:
+      summary: Login an approved account
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Access and refresh token
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Pending, rejected or disabled
+  /auth/refresh:
+    post:
+      summary: Rotate an opaque refresh token
+      operationId: refresh
+      responses:
+        '200':
+          description: Rotated token pair
+  /dashboard:
+    get:
+      summary: Read compact factory overview
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Current projection }
+        '304': { description: ETag unchanged }
+  /quality/latest:
+    get:
+      summary: Read latest quality history
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Published BMKCS projections }
+  /attendance/me:
+    get:
+      summary: Read the authenticated employee attendance sessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Five latest workdays and current-month credited time
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceSummary' }
+  /profile/me:
+    get:
+      summary: Read the authenticated employee profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Effective profile }
+  /announcements:
+    get:
+      summary: Read announcements for the authenticated user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Inbox items }
+  /integrations/events:
+    post:
+      summary: Ingest one canonical immutable event
+      parameters:
+        - in: header
+          name: X-BMA-Gateway-Key
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CanonicalEvent'
+      responses:
+        '202': { description: Accepted }
+        '200': { description: Duplicate already accepted }
+        '401': { description: Invalid integration key }
+        '422': { description: Contract or hash invalid }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, password, display_name]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 64 }
+        password: { type: string, minLength: 10, maxLength: 200 }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        employee_code: { type: [string, 'null'], maxLength: 64 }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        device_name: { type: [string, 'null'], maxLength: 100 }
+    CanonicalEvent:
+      type: object
+      required: [event_id, event_type, source_system, occurred_at, schema_version, payload, payload_hash]
+      properties:
+        event_id: { type: string, maxLength: 100 }
+        event_type:
+          type: string
+          enum: [MOTOR_STATE_CHANGED, QUALITY_RESULT_PUBLISHED, EMPLOYEE_SCAN, EMPLOYEE_ENTRY, EMPLOYEE_EXIT, PRODUCTION_MASS_RECORDED, ANNOUNCEMENT_PUBLISHED]
+        source_system: { type: string, maxLength: 64 }
+        source_device_id: { type: [string, 'null'] }
+        sequence: { type: [integer, 'null'] }
+        occurred_at: { type: string, format: date-time }
+        schema_version: { const: '1.0' }
+        correlation_id: { type: [string, 'null'] }
+        payload: { type: object }
+        payload_hash: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+        signature: { type: [string, 'null'] }
+    AttendanceSummary:
+      type: object
+      required: [employee_code, shift_name, month, monthly_total_minutes, monthly_total_hours, monthly_remaining_minutes, items]
+      properties:
+        employee_code: { type: [string, 'null'] }
+        shift_name: { type: string }
+        month: { type: string, pattern: '^\d{4}-\d{2}$' }
+        monthly_total_minutes: { type: integer, minimum: 0 }
+        monthly_total_hours: { type: integer, minimum: 0 }
+        monthly_remaining_minutes: { type: integer, minimum: 0, maximum: 59 }
+        items:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/AttendanceDay' }
+    AttendanceDay:
+      type: object
+      required: [id, work_date, shift_code, credited_minutes, status, payroll_approved]
+      properties:
+        id: { type: string, format: uuid }
+        work_date: { type: string, format: date }
+        entry_at: { type: [string, 'null'], format: date-time }
+        exit_at: { type: [string, 'null'], format: date-time }
+        shift_code: { type: [string, 'null'] }
+        credited_minutes: { type: integer, minimum: 0 }
+        status: { type: string, enum: [PROVISIONAL, CONFIRMED, NEEDS_REVIEW, APPROVED] }
+        review_reason: { type: [string, 'null'] }
+        payroll_approved: { type: boolean }
