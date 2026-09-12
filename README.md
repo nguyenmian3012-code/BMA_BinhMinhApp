@@ -5,7 +5,7 @@ Flutter cho mobile và một BMA Core độc lập chạy ASP.NET Core .NET 10 L
 PostgreSQL và Razor Pages Admin.
 
 > Trạng thái: **Engineering Alpha đang triển khai theo Whitepaper V1.0**  
-> Nhánh phát triển hiện tại: `codex/terminal-bridge-v0-3`
+> Nhánh phát triển hiện tại: `codex/windows-native-runtime-v0-3-3`
 > BMA Core: `v0.3.1`; BM Device Bridge mới nhất: `v0.3.2`
 > Múi giờ nghiệp vụ: `Asia/Ho_Chi_Minh`  
 > Package/bundle ID dự kiến: `com.binhminh.bma`
@@ -36,7 +36,7 @@ PostgreSQL và Razor Pages Admin.
 /mobile       Flutter application source
 /backend      BMA Core API, workers, Admin và PostgreSQL migrations
 /contracts    OpenAPI, JSON Schema và payload mẫu
-/infra        Docker, Cloudflare, Gateway và script vận hành
+/infra        Windows Service, Cloudflare, Gateway và script vận hành
 /tools        BM Device Bridge và công cụ biên tại nhà máy
 /docs         Whitepaper, ADR, data dictionary, roadmap và runbook
 /assets       Tài sản nhận diện chính thức dùng lại cho app và website
@@ -51,9 +51,9 @@ Giải nén `BMA-Terminal-Stack-v0.3.2`, giữ nguyên `.env.staging`, `data` v�
 powershell.exe -ExecutionPolicy Bypass -File .\Deploy-BMA-Terminal-v0.3.2.ps1
 ```
 
-Script deploy BMA, kiểm tra tương thích local/public, nâng cấp và khởi động
-Bridge, rồi requeue callback. Nếu BMA chưa hỗ trợ `EMPLOYEE_SCAN`, script dừng
-trước khi Bridge gửi dữ liệu.
+Script publish BMA thành Windows Service, kết nối PostgreSQL 17 native, kiểm tra
+local/public, nâng cấp Bridge rồi requeue callback. Docker Desktop không còn
+tham gia runtime trên MinhComp.
 
 ## Quy tắc chấm công `EMPLOYEE_SCAN`
 
@@ -113,22 +113,21 @@ Các route hiện hữu được giữ nguyên:
 Tình trạng publish BMKCS hiện tại được ghi tại
 [`docs/BMKCS_PUBLISH_AUDIT.md`](docs/BMKCS_PUBLISH_AUDIT.md).
 
-## Chạy backend local
+## Chạy backend native
 
-Yêu cầu: .NET 10 SDK, Docker Desktop và PostgreSQL/Docker Compose.
+Yêu cầu: PostgreSQL 17 native. Có thể dùng package `bma-native-win-x64` từ CI;
+nếu không có package, máy triển khai cần .NET 10 SDK.
 
 ```powershell
-Copy-Item .env.example .env
-# Điền secret chỉ trong .env local; không commit file này.
-docker compose --env-file .env up --build
-Invoke-RestMethod http://localhost:8790/bmapp/health
+Copy-Item .env.example .env.staging
+# Điền secret trong .env.staging; không commit file này.
+powershell.exe -ExecutionPolicy Bypass `
+  -File .\infra\scripts\restore-staging-origin.ps1
 ```
 
-`BMA_PATH_BASE` phải khớp route Cloudflare. Dùng `/bmapp` cho production và
-`/bmapp-staging` cho staging; backend, Admin và static assets dùng chung prefix
-này thay vì hard-code đường dẫn. `BMA_HOST_PORT` mặc định là `8790`; staging
-dùng `8791` và phải chạy bằng một Compose project riêng để database/volume
-không trùng production.
+Staging chạy service `BMA-Staging`, port `8791`, database native
+`binhminh_data_staging`. Production dùng service `BMA-Production`, port `8790`,
+database `binhminh_data`. Hai môi trường không dùng chung database hoặc secret.
 
 ## Chạy Flutter local
 
@@ -170,7 +169,7 @@ Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu qu
 
 ## Definition of Done cho Engineering Alpha
 
-- Backend build/test, migration và Docker image vượt CI.
+- Backend build/test, migration và Windows native package vượt CI.
 - Flutter analyze/test và Android debug APK vượt CI.
 - Auth hỗ trợ đăng ký chờ duyệt, phiên dài hạn có refresh-token rotation.
 - Canonical event ingest, outbox, projection, audit và reconciliation có test.

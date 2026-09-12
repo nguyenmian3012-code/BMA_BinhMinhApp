@@ -1,14 +1,19 @@
 param(
-    [string]$BmaEnvPath = "C:\ABMT\BMA_BinhMinhApp\.env.staging",
+    [string]$BmaEnvPath = "",
     [string]$BridgePath = "C:\ABMT\BM-Device-Bridge",
+    [string]$InstallRoot = "C:\ABMT\BMA-Services",
+    [string]$PackagePath = "",
     [string]$PersonField = "body.info.PersonID"
 )
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $bridgeSource = Join-Path $root "tools\bm-device-bridge"
+$nativeDeploy = Join-Path $root "infra\scripts\restore-staging-origin.ps1"
 $bmaVersion = "0.3.1"
 $bridgeVersion = "0.3.2"
+
+if (!$BmaEnvPath) { $BmaEnvPath = Join-Path $root ".env.staging" }
 
 function Get-EnvValue([string]$Name, [string]$Default) {
     $escaped = [regex]::Escape($Name)
@@ -31,21 +36,12 @@ function Wait-Json([string]$Url, [int]$Seconds = 90) {
 if (-not (Test-Path $BmaEnvPath -PathType Leaf)) {
     throw "Khong tim thay: $BmaEnvPath"
 }
-if (-not (Test-Path (Join-Path $root "docker-compose.yml") -PathType Leaf)) {
-    throw "Goi deploy khong hop le. Thieu docker-compose.yml."
-}
 if (-not (Test-Path (Join-Path $bridgeSource "start-staging.ps1") -PathType Leaf)) {
     throw "Goi deploy khong hop le. Thieu Bridge."
-}
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    throw "Khong tim thay Docker."
 }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw "Khong tim thay Node.js."
 }
-
-docker info 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Docker Desktop chua chay." }
 
 $pathBase = Get-EnvValue "BMA_PATH_BASE" "/bmapp-staging"
 $port = [int](Get-EnvValue "BMA_HOST_PORT" "8791")
@@ -55,17 +51,18 @@ if ($pathBase -ne "/bmapp-staging" -or $port -ne 8791) {
 $localBase = "http://127.0.0.1:$port$pathBase"
 $publicBase = "https://gateway.redtigerhead.com$pathBase"
 
-Write-Host "[1/5] Build BMA $bmaVersion" -ForegroundColor Cyan
-& docker compose --project-name bma-staging --env-file $BmaEnvPath build bma
-if ($LASTEXITCODE -ne 0) { throw "BMA build that bai." }
-& docker compose --project-name bma-staging --env-file $BmaEnvPath up -d --force-recreate bma
-if ($LASTEXITCODE -ne 0) { throw "BMA deploy that bai." }
+Write-Host "[1/5] Deploy native BMA $bmaVersion" -ForegroundColor Cyan
+$deployArguments = @("-EnvFile", $BmaEnvPath, "-InstallRoot", $InstallRoot)
+if ($PackagePath) { $deployArguments += @("-PackagePath", $PackagePath) }
+& $nativeDeploy @deployArguments
 
 Write-Host "[2/5] Compatibility handshake" -ForegroundColor Cyan
 $localDetails = Wait-Json "$localBase/health/details"
 $publicDetails = Wait-Json "$publicBase/health/details"
 foreach ($details in @($localDetails, $publicDetails)) {
     if ($details.version -ne $bmaVersion -or
+        $details.runtime -ne "windows-service" -or
+        $details.database -ne "postgresql-native" -or
         $details.supported_event_types -notcontains "EMPLOYEE_SCAN") {
         throw "BMA runtime khong tuong thich Bridge $bridgeVersion."
     }

@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, develop]
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'codex/**']
 
 permissions:
   contents: read
@@ -31,10 +31,12 @@ jobs:
       - name: Package BMA Terminal Stack v0.3.2
         run: |
           package="$RUNNER_TEMP/BMA-Terminal-Stack-v0.3.2"
-          mkdir -p "$package/tools"
-          cp Directory.Build.props docker-compose.yml .env.example \
+          mkdir -p "$package/tools" "$package/infra/scripts"
+          cp Directory.Build.props .env.example \
             Deploy-BMA-Terminal-v0.3.2.ps1 "$package/"
           cp -R backend "$package/backend"
+          cp infra/scripts/deploy-native-bma-service.ps1 \
+            infra/scripts/restore-staging-origin.ps1 "$package/infra/scripts/"
           cp -R tools/bm-device-bridge "$package/tools/bm-device-bridge"
           rm -rf "$package/tools/bm-device-bridge/data"
           rm -f "$package/tools/bm-device-bridge/employee-map.json"
@@ -53,7 +55,6 @@ jobs:
         run: |
           $failed = $false
           $scriptFiles = @(Get-ChildItem infra/scripts -Filter *.ps1) +
-            @(Get-Item Deploy-BMA-Terminal-v0.3.1.ps1) +
             @(Get-Item Deploy-BMA-Terminal-v0.3.2.ps1)
           $scriptFiles | ForEach-Object {
             $tokens = $null
@@ -78,16 +79,13 @@ jobs:
             $unsafeSql | ForEach-Object {
               Write-Error "$($_.Path):$($_.LineNumber): stream SQL through stdin instead of docker command arguments"
             }
-            throw "Unsafe PowerShell-to-Docker SQL transport detected."
+            throw "Unsafe command-line SQL transport detected."
           }
-      - name: Validate production and staging Compose isolation
+      - name: Reject Docker runtime dependencies
         run: |
-          docker compose --project-name bma-production --env-file .env.example config >/tmp/bma-production-compose.yml
-          BMA_HOST_PORT=8791 BMA_PATH_BASE=/bmapp-staging \
-            docker compose --project-name bma-staging --env-file .env.example config >/tmp/bma-staging-compose.yml
-          grep --quiet 'published: "8790"' /tmp/bma-production-compose.yml
-          grep --quiet 'published: "8791"' /tmp/bma-staging-compose.yml
-          grep --quiet 'App__PathBase: /bmapp-staging' /tmp/bma-staging-compose.yml
+          ! grep -RniE 'docker(\.exe)? (compose|run|info)|Host=postgres' \
+            Deploy-BMA-Terminal-v0.3.2.ps1 infra/scripts ops \
+            docs/DEPLOYMENT.md docs/OWNER_ACTIONS.md README.md
 
   backend:
     runs-on: ubuntu-latest
@@ -319,8 +317,27 @@ jobs:
           for refresh_pid in $refresh_pids; do wait "$refresh_pid"; done
           refresh_statuses=$(sort -n /tmp/refresh-*.status | paste -sd, -)
           test "$refresh_statuses" = "200,401"
-      - name: Build production container
-        run: docker build --file backend/Dockerfile --tag bma-core:ci .
+      - name: Publish Windows native service
+        run: |
+          dotnet publish backend/src/Bma.Api/Bma.Api.csproj \
+            --configuration Release --runtime win-x64 --self-contained true \
+            --output "$RUNNER_TEMP/bma-native-win-x64" \
+            /p:PublishSingleFile=false
+          cd "$RUNNER_TEMP/bma-native-win-x64"
+          {
+            echo "source_commit=$GITHUB_SHA"
+            echo "runtime=win-x64"
+            echo "deployment=windows-service"
+            echo "database=postgresql-native"
+          } > BUILD_INFO.txt
+          find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | \
+            xargs -0 sha256sum > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bma-native-win-x64
+          path: ${{ runner.temp }}/bma-native-win-x64
+          retention-days: 7
+          compression-level: 0
 
   mobile:
     runs-on: ubuntu-latest

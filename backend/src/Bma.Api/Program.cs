@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -10,6 +11,8 @@ using Bma.Modules;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +20,8 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddJsonConsole();
+builder.Services.AddWindowsService(options =>
+    options.ServiceName = builder.Configuration["Service:Name"] ?? "BMA Core");
 var pathBase = builder.Configuration["App:PathBase"] ?? "/bmapp";
 if (pathBase.Length < 2 || !pathBase.StartsWith('/') || pathBase.EndsWith('/'))
     throw new InvalidOperationException("App:PathBase must be a non-root path that starts with '/' and does not end with '/'.");
@@ -29,6 +34,20 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 builder.Services.Configure<GatewayOptions>(builder.Configuration.GetSection(GatewayOptions.Section));
 builder.Services.Configure<PlantOptions>(builder.Configuration.GetSection(PlantOptions.Section));
 builder.Services.Configure<AttendanceOptions>(builder.Configuration.GetSection(AttendanceOptions.Section));
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
+
+var dataProtectionPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionPath))
+{
+    Directory.CreateDirectory(dataProtectionPath);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath));
+}
 
 var connection = builder.Configuration.GetConnectionString("Bma");
 if (string.IsNullOrWhiteSpace(connection))
@@ -148,6 +167,7 @@ builder.Services.AddHostedService<AttendanceReconciliationWorker>();
 
 var app = builder.Build();
 app.UseExceptionHandler();
+app.UseForwardedHeaders();
 app.UseResponseCompression();
 app.Use(async (context, next) =>
 {
@@ -189,6 +209,8 @@ app.MapGet("/health/details", () => Results.Ok(new
 {
     ok = true,
     version = "0.3.1",
+    runtime = builder.Configuration["Runtime:Mode"] ?? "process",
+    database = builder.Configuration["Database:Deployment"] ?? "postgresql",
     supported_event_types = CanonicalEventTypes.Supported.Order()
 })).AllowAnonymous();
 app.MapBmaAuth();

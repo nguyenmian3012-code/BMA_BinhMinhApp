@@ -7,7 +7,7 @@ Một ứng dụng điều khiển, hai nhóm độc lập. Không trộn API, d
 | Nhóm | Dịch vụ |
 | --- | --- |
 | ABMT | 9Router, OpenClaw, ABMT Core, Cloudflare ABMT, các channel hiện hữu |
-| Bình Minh | PostgreSQL 17, BMA production `8790`, BMA staging `8791`, BM Device Bridge `8789`, RedTiger tunnel, BMKCS Lab |
+| Bình Minh | PostgreSQL 17 native, Windows Service BMA production `8790`, staging `8791`, BM Device Bridge `8789`, RedTiger tunnel, BMKCS Lab |
 
 Mỗi dịch vụ hiển thị ba tín hiệu riêng: process/service Windows, local health,
 public health. `Cloudflare Online` không đồng nghĩa origin hoạt động; public

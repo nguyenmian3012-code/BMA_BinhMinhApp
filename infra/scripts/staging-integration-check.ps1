@@ -1,7 +1,7 @@
 param(
     [string]$BaseUrl = "https://gateway.redtigerhead.com/bmapp-staging",
     [string]$EnvFile = ".env.staging",
-    [string]$ProjectName = "bma-staging",
+    [string]$PostgresBin = "C:\Program Files\PostgreSQL\17\bin",
     [int]$ProjectionTimeoutSeconds = 30
 )
 
@@ -120,6 +120,37 @@ function New-QualityEvent {
     return ConvertTo-Json -InputObject $message -Depth 10 -Compress
 }
 
+function New-EmployeeScanEvent {
+    param(
+        [Parameter(Mandatory = $true)][string]$EventId,
+        [Parameter(Mandatory = $true)][string]$EmployeeId,
+        [Parameter(Mandatory = $true)][long]$Sequence,
+        [Parameter(Mandatory = $true)][DateTimeOffset]$OccurredAt
+    )
+
+    $payload = [ordered]@{
+        employee_id = $EmployeeId
+        evidence_ref = "bma-staging://synthetic/$EventId"
+        verification_method = "SYNTHETIC"
+        confidence = 1
+    }
+    $payloadJson = ConvertTo-Json -InputObject $payload -Depth 10 -Compress
+    $message = [ordered]@{
+        event_id = $EventId
+        event_type = "EMPLOYEE_SCAN"
+        source_system = "FACE_TERMINAL"
+        source_device_id = "BMA-STAGING-FACE"
+        sequence = $Sequence
+        occurred_at = $OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
+        schema_version = "1.0"
+        correlation_id = "attendance-$EmployeeId"
+        payload = $payload
+        payload_hash = Get-Sha256Hex -Text $payloadJson
+        signature = $null
+    }
+    return ConvertTo-Json -InputObject $message -Depth 10 -Compress
+}
+
 function Send-CanonicalEvent {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
@@ -145,25 +176,27 @@ function Send-CanonicalEvent {
 function Invoke-PostgresScalar {
     param(
         [Parameter(Mandatory = $true)][string]$Sql,
-        [Parameter(Mandatory = $true)][string]$ComposeEnvFile,
-        [Parameter(Mandatory = $true)][string]$ComposeProject
+        [Parameter(Mandatory = $true)][string]$DatabaseHost,
+        [Parameter(Mandatory = $true)][string]$DatabasePort,
+        [Parameter(Mandatory = $true)][string]$DatabaseName,
+        [Parameter(Mandatory = $true)][string]$DatabaseUser,
+        [Parameter(Mandatory = $true)][string]$DatabasePassword,
+        [Parameter(Mandatory = $true)][string]$PsqlPath
     )
 
-    # Stream SQL through stdin so it never crosses PowerShell -> Docker -> Alpine sh
-    # as a quoted command-line argument. The shell is used only to expand the
-    # container-owned PostgreSQL connection variables.
-    $arguments = @(
-        "compose",
-        "--project-name", $ComposeProject,
-        "--env-file", $ComposeEnvFile,
-        "exec", "-T",
-        "postgres", "sh", "-c",
-        'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -qAt'
-    )
-    $output = @($Sql | & docker @arguments 2>&1)
-    $postgresExitCode = $LASTEXITCODE
-    if ($postgresExitCode -ne 0) {
-        throw "PostgreSQL verification failed (exit $postgresExitCode): $($output -join [Environment]::NewLine)"
+    $previousPassword = $env:PGPASSWORD
+    try {
+        $env:PGPASSWORD = $DatabasePassword
+        $output = @($Sql | & $PsqlPath -X -v ON_ERROR_STOP=1 `
+            --host $DatabaseHost --port $DatabasePort --username $DatabaseUser `
+            --dbname $DatabaseName --quiet --tuples-only --no-align 2>&1)
+        $postgresExitCode = $LASTEXITCODE
+        if ($postgresExitCode -ne 0) {
+            throw "PostgreSQL verification failed (exit $postgresExitCode): $($output -join [Environment]::NewLine)"
+        }
+    }
+    finally {
+        $env:PGPASSWORD = $previousPassword
     }
 
     $nonEmptyLines = @(
@@ -195,6 +228,38 @@ $gatewayKey = Get-DotEnvValue -Path $resolvedEnvFile -Name "BMA_GATEWAY_INBOUND_
 if ([string]::IsNullOrWhiteSpace($gatewayKey) -or $gatewayKey -like "*CHANGE_ME*") {
     throw "BMA_GATEWAY_INBOUND_KEY is missing or still uses a placeholder."
 }
+$databaseHost = Get-DotEnvValue -Path $resolvedEnvFile -Name "BMA_DB_HOST"
+if (!$databaseHost) { $databaseHost = "127.0.0.1" }
+$databasePort = Get-DotEnvValue -Path $resolvedEnvFile -Name "BMA_DB_PORT"
+if (!$databasePort) { $databasePort = "5432" }
+$databaseName = Get-DotEnvValue -Path $resolvedEnvFile -Name "BMA_DB_NAME"
+if (!$databaseName) { $databaseName = "binhminh_data_staging" }
+$databaseUser = Get-DotEnvValue -Path $resolvedEnvFile -Name "BMA_DB_USER"
+if (!$databaseUser) { $databaseUser = "bma_staging_runtime" }
+$databasePassword = Get-DotEnvValue -Path $resolvedEnvFile -Name "BMA_DB_PASSWORD"
+if (!$databasePassword) {
+    $databasePassword = Get-DotEnvValue -Path $resolvedEnvFile -Name "POSTGRES_PASSWORD"
+}
+if (!$databasePassword -or $databasePassword -like "*CHANGE_ME*") {
+    throw "BMA_DB_PASSWORD is missing or still uses a placeholder."
+}
+if ($databaseName -eq "binhminh_data") {
+    throw "Safety stop: synthetic tests cannot use production database binhminh_data."
+}
+$psqlPath = Join-Path $PostgresBin "psql.exe"
+if (!(Test-Path $psqlPath -PathType Leaf)) {
+    $psqlCommand = Get-Command psql.exe -ErrorAction SilentlyContinue
+    if (!$psqlCommand) { throw "psql.exe not found: $psqlPath" }
+    $psqlPath = $psqlCommand.Source
+}
+$databaseArguments = @{
+    DatabaseHost = $databaseHost
+    DatabasePort = $databasePort
+    DatabaseName = $databaseName
+    DatabaseUser = $databaseUser
+    DatabasePassword = $databasePassword
+    PsqlPath = $psqlPath
+}
 
 $runId = [DateTime]::UtcNow.ToString("yyyyMMddHHmmss") + "-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
 $deviceId = "BMA-STAGING-M1P-INPUT-$runId"
@@ -203,6 +268,9 @@ $eventOneId = "bma-staging-$runId-seq-1"
 $eventGapId = "bma-staging-$runId-seq-3"
 $qualityEventId = "bmkcs-staging-$runId"
 $qualityResultId = "SYNTHETIC-$runId"
+$employeeId = "BMA-SYNTHETIC-$runId"
+$scanEntryId = "employee-scan-entry-$runId"
+$scanExitId = "employee-scan-exit-$runId"
 $endpoint = $BaseUrl.TrimEnd("/") + "/api/v1/integrations/events"
 
 Push-Location $repoRoot
@@ -212,8 +280,7 @@ try {
 
     # Verify the local database command path before writing synthetic events. A
     # command-transport failure must not leave another partial checkpoint run.
-    $databaseProbe = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-        -ComposeProject $ProjectName -Sql "SELECT 1;")
+    $databaseProbe = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT 1;")
     if ($databaseProbe -ne 1) {
         throw "PostgreSQL scalar preflight returned '$databaseProbe' instead of 1."
     }
@@ -252,33 +319,58 @@ try {
         throw "Synthetic BMKCS result was not accepted: HTTP $($qualityAccepted.HttpStatus), status $($qualityAccepted.Status)"
     }
 
+    $vietnamOffset = [TimeSpan]::FromHours(7)
+    $workDate = [DateTimeOffset]::UtcNow.ToOffset($vietnamOffset).Date.AddDays(-1)
+    while ($workDate.DayOfWeek -eq [DayOfWeek]::Sunday) { $workDate = $workDate.AddDays(-1) }
+    $entryAt = [DateTimeOffset]::new($workDate.AddHours(7), $vietnamOffset)
+    $exitAt = [DateTimeOffset]::new($workDate.AddHours(17), $vietnamOffset)
+    $entryJson = New-EmployeeScanEvent -EventId $scanEntryId -EmployeeId $employeeId `
+        -Sequence 101 -OccurredAt $entryAt
+    $entryAccepted = Send-CanonicalEvent -Url $endpoint -GatewayKey $gatewayKey `
+        -EventId $scanEntryId -Body $entryJson
+    $entryDuplicate = Send-CanonicalEvent -Url $endpoint -GatewayKey $gatewayKey `
+        -EventId $scanEntryId -Body $entryJson
+    $exitJson = New-EmployeeScanEvent -EventId $scanExitId -EmployeeId $employeeId `
+        -Sequence 102 -OccurredAt $exitAt
+    $exitAccepted = Send-CanonicalEvent -Url $endpoint -GatewayKey $gatewayKey `
+        -EventId $scanExitId -Body $exitJson
+    if ($entryAccepted.Status -ne "ACCEPTED" -or $entryDuplicate.Status -ne "DUPLICATE" -or
+        $exitAccepted.Status -ne "ACCEPTED") {
+        throw "Synthetic EMPLOYEE_SCAN events were not accepted."
+    }
+
     $quotedOne = $eventOneId.Replace("'", "''")
     $quotedGap = $eventGapId.Replace("'", "''")
     $quotedQuality = $qualityEventId.Replace("'", "''")
     $quotedResult = $qualityResultId.Replace("'", "''")
     $quotedDevice = $deviceId.Replace("'", "''")
+    $quotedEntry = $scanEntryId.Replace("'", "''")
+    $quotedExit = $scanExitId.Replace("'", "''")
+    $quotedEmployee = $employeeId.Replace("'", "''")
     $deadline = [DateTime]::UtcNow.AddSeconds($ProjectionTimeoutSeconds)
     do {
-        $rawProjected = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM raw_integration_events WHERE event_id IN ('$quotedOne','$quotedGap','$quotedQuality') AND processing_state = 'Projected' AND processing_error IS NULL;")
-        $outboxProcessed = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM outbox_messages o JOIN raw_integration_events r ON o.message_key = r.id::text WHERE r.event_id IN ('$quotedOne','$quotedGap','$quotedQuality') AND o.processed_at IS NOT NULL AND o.last_error IS NULL;")
-        $projectionUpdated = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM motor_state_projections WHERE position = 'INPUT' AND source_event_id = '$quotedGap' AND is_on = false;")
-        $gapAudited = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM audit_entries WHERE action = 'INTEGRATION_SEQUENCE_GAP' AND subject_id = '$quotedDevice';")
-        $qualityProjected = [int](Invoke-PostgresScalar -ComposeEnvFile $resolvedEnvFile `
-            -ComposeProject $ProjectName -Sql "SELECT count(*) FROM quality_readings WHERE result_id = '$quotedResult' AND source_event_id = '$quotedQuality';")
-        if ($rawProjected -eq 3 -and $outboxProcessed -eq 3 -and `
-            $projectionUpdated -eq 1 -and $gapAudited -ge 1 -and $qualityProjected -eq 1) { break }
+        $rawProjected = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM raw_integration_events WHERE event_id IN ('$quotedOne','$quotedGap','$quotedQuality','$quotedEntry','$quotedExit') AND processing_state = 'Projected' AND processing_error IS NULL;")
+        $outboxProcessed = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM outbox_messages o JOIN raw_integration_events r ON o.message_key = r.id::text WHERE r.event_id IN ('$quotedOne','$quotedGap','$quotedQuality','$quotedEntry','$quotedExit') AND o.processed_at IS NOT NULL AND o.last_error IS NULL;")
+        $projectionUpdated = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM motor_state_projections WHERE position = 'INPUT' AND source_event_id = '$quotedGap' AND is_on = false;")
+        $gapAudited = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM audit_entries WHERE action = 'INTEGRATION_SEQUENCE_GAP' AND subject_id = '$quotedDevice';")
+        $qualityProjected = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM quality_readings WHERE result_id = '$quotedResult' AND source_event_id = '$quotedQuality';")
+        $attendanceProjected = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM attendance_events WHERE employee_id = '$quotedEmployee' AND source_event_id IN ('$quotedEntry','$quotedExit');")
+        $attendanceConfirmed = [int](Invoke-PostgresScalar @databaseArguments -Sql "SELECT count(*) FROM attendance_sessions WHERE employee_id = '$quotedEmployee' AND entry_event_id = '$quotedEntry' AND exit_event_id = '$quotedExit' AND status = 'Confirmed' AND credited_minutes = 480;")
+        if ($rawProjected -eq 5 -and $outboxProcessed -eq 5 -and `
+            $projectionUpdated -eq 1 -and $gapAudited -ge 1 -and `
+            $qualityProjected -eq 1 -and $attendanceProjected -eq 2 -and `
+            $attendanceConfirmed -eq 1) { break }
         Start-Sleep -Seconds 2
     } while ([DateTime]::UtcNow -lt $deadline)
 
-    if ($rawProjected -ne 3) { throw "Expected 3 projected raw events; found $rawProjected." }
-    if ($outboxProcessed -ne 3) { throw "Expected 3 processed outbox messages; found $outboxProcessed." }
+    if ($rawProjected -ne 5) { throw "Expected 5 projected raw events; found $rawProjected." }
+    if ($outboxProcessed -ne 5) { throw "Expected 5 processed outbox messages; found $outboxProcessed." }
     if ($projectionUpdated -ne 1) { throw "Motor projection did not advance to the sequence-3 OFF event." }
     if ($gapAudited -lt 1) { throw "Sequence gap was not recorded in audit_entries." }
     if ($qualityProjected -ne 1) { throw "Synthetic BMKCS result was not projected." }
+    if ($attendanceProjected -ne 2 -or $attendanceConfirmed -ne 1) {
+        throw "Synthetic EMPLOYEE_SCAN did not produce one confirmed 480-minute session."
+    }
 
     [PSCustomObject]@{
         FirstDelivery = "202 ACCEPTED"
@@ -289,10 +381,15 @@ try {
         SequenceGapAuditEntries = $gapAudited
         BmkcsSyntheticResult = $qualityResultId
         QualityProjection = "PASS"
+        EmployeeScan = "$employeeId -> ENTRY + EXIT"
+        EmployeeScanDuplicate = "PASS"
+        AttendanceSession = "CONFIRMED / 480 minutes"
         Result = "PASS"
     } | Format-List
 }
 finally {
     $gatewayKey = $null
+    $databasePassword = $null
+    $databaseArguments.DatabasePassword = $null
     Pop-Location
 }

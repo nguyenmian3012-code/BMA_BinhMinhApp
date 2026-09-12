@@ -26,6 +26,15 @@ flowchart TD
 Raw event là bất biến. Mobile và Admin chỉ đọc projection hoặc tạo event điều
 chỉnh; không update trực tiếp lịch sử gốc.
 
+## Runtime MinhComp
+
+- PostgreSQL 17 chạy native Windows.
+- Production dùng database `binhminh_data`.
+- Staging dùng database `binhminh_data_staging`.
+- BMA Core chạy bằng `BMA-Production` hoặc `BMA-Staging` Windows Service.
+- Service chỉ bind loopback; Cloudflare Tunnel cung cấp HTTPS public.
+- Docker không thuộc runtime MinhComp.
+
 ## Module boundaries
 
 | Module | Trách nhiệm |

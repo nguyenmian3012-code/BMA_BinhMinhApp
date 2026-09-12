@@ -1,92 +1,129 @@
-# Deployment và rollback
+# Deployment Windows native
 
-## Environments
+## Kiến trúc đã khóa
 
-| Environment | URL/port | Database | Dữ liệu |
+| Môi trường | Windows Service | URL local | PostgreSQL native |
 | --- | --- | --- | --- |
-| Local | `http://localhost:8790` | `bma_dev` | synthetic |
-| Staging | `http://localhost:8791/bmapp-staging` | riêng | synthetic/anonymized |
-| Production | `http://localhost:8790/bmapp` | riêng | production |
+| Staging | `BMA-Staging` | `127.0.0.1:8791/bmapp-staging` | `binhminh_data_staging` |
+| Production | `BMA-Production` | `127.0.0.1:8790/bmapp` | `binhminh_data` |
 
-Không dùng chung database, secret hoặc refresh token giữa ba môi trường.
+MinhComp không cần Docker Desktop. BMA Core chạy bằng Windows Service. Cả hai
+database nằm trong PostgreSQL 17 Windows. Staging không được kết nối
+`binhminh_data`.
 
-`App__PathBase` phải trùng chính xác prefix mà Cloudflare chuyển tiếp:
+Cloudflare Tunnel giữ nguyên path. Cổng chỉ bind `127.0.0.1`; không mở BMA trực
+tiếp ra LAN hoặc Internet. Data Protection keys nằm ngoài release directory,
+được giữ qua mỗi lần nâng cấp.
 
-- Staging: `App__PathBase=/bmapp-staging`.
-- Production: `App__PathBase=/bmapp`.
-
-Cloudflare Tunnel giữ nguyên path; nó không tự đổi `/bmapp-staging` thành
-`/bmapp`. Health, Admin, API và static assets đều được kiểm thử dưới prefix đã
-cấu hình để tránh route đúng nhưng giao diện mất CSS.
-
-Container bật xử lý `X-Forwarded-Proto` để redirect/cookie Admin nhận đúng HTTPS
-do Cloudflare kết thúc TLS. Cổng BMA bắt buộc vẫn bind `127.0.0.1`; không đổi
-thành `0.0.0.0`, vì đây là ranh giới tin cậy cho forwarded headers. Volume
-`bma_dataprotection` giữ khóa cookie/antiforgery qua các lần restart.
-
-## Local Docker
-
-1. Copy `.env.example` thành `.env` và thay toàn bộ `CHANGE_ME`.
-2. Chạy `docker compose --env-file .env up --build`.
-3. Kiểm tra `/bmapp/health`, Admin login và stylesheet bằng
-   `infra/scripts/health-check.ps1`.
-4. Xóa/rotate bootstrap password sau khi admin đầu tiên được tạo.
-
-## Tách staging và production trên MinhComp
-
-Không chạy hai môi trường bằng cùng Compose project. Project name là namespace
-của container, network và named volume; tách project name ngăn staging gắn nhầm
-database hoặc Data Protection keys của production.
-
-Staging dùng file secret riêng (không commit):
+## Chuẩn bị staging
 
 ```powershell
 Copy-Item .env.example .env.staging
-# Trong .env.staging: BMA_HOST_PORT=8791, BMA_PATH_BASE=/bmapp-staging,
-# database/user/password/JWT/Gateway key/bootstrap password đều riêng.
-docker compose --project-name bma-staging --env-file .env.staging up -d --build
-.\infra\scripts\health-check.ps1 -BaseUrl http://localhost:8791 -PathBase /bmapp-staging
+notepad .env.staging
 ```
 
-Production chỉ khởi động sau khi staging đạt checkpoint:
+Thay toàn bộ `CHANGE_ME`. Các giá trị bắt buộc:
+
+```text
+BMA_DB_NAME=binhminh_data_staging
+BMA_DB_USER=bma_staging_runtime
+BMA_PATH_BASE=/bmapp-staging
+BMA_HOST_PORT=8791
+```
+
+Không ghi mật khẩu PostgreSQL `postgres` vào file. Script chỉ hỏi mật khẩu này
+khi cần tạo database/user staging lần đầu.
+
+## Deploy staging
+
+Mở PowerShell bằng **Run as administrator**:
 
 ```powershell
-docker compose --project-name bma-production --env-file .env.production up -d --build
-.\infra\scripts\health-check.ps1 -BaseUrl http://localhost:8790 -PathBase /bmapp
+Set-Location C:\ABMT\BMA_BinhMinhApp-v032
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\restore-staging-origin.ps1
 ```
 
-Trong `.env.production`, đặt `BMA_HOST_PORT=8790` và `BMA_PATH_BASE=/bmapp`.
-Không dùng `docker compose down -v` trên MinhComp vì tùy chọn `-v` xóa named
-volume chứa PostgreSQL và khóa Data Protection.
+Nếu máy không có .NET 10 SDK, tải artifact `bma-native-win-x64` của đúng commit:
 
-## Host MinhComp
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\restore-staging-origin.ps1 `
+  -PackagePath C:\Users\Mian\Downloads\bma-native-win-x64.zip
+```
 
-1. Backup PostgreSQL hiện tại và lưu manifest checksum.
-2. Pull đúng commit đã qua CI.
-3. Build image; chạy migration trong staging trước.
-4. Health/smoke test bằng `infra/scripts/health-check.ps1`.
-5. Chuyển Cloudflare route khi staging đạt.
-6. Theo dõi log/outbox lag/HTTP 5xx tối thiểu 30 phút.
+Script thực hiện:
+
+1. Kiểm tra PostgreSQL 17 native.
+2. Tạo database staging riêng.
+3. Publish hoặc giải nén BMA.
+4. Cài `BMA-Staging` tự khởi động.
+5. Giới hạn quyền thư mục secret.
+6. Kiểm tra local và public health.
+
+Health hợp lệ phải chứa:
+
+```json
+{
+  "ok": true,
+  "runtime": "windows-service",
+  "database": "postgresql-native"
+}
+```
+
+## Synthetic integration
+
+Chỉ chạy với database staging:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\staging-integration-check.ps1
+```
+
+Script dừng nếu database mang tên `binhminh_data`.
+
+## Backup và restore gate
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\verify-backup-restore.ps1
+```
+
+Backup được restore vào database tạm có prefix `bma_restore_check_`. Database
+tạm bị xóa sau kiểm tra. Database nguồn không bị thay đổi.
+
+## Production
+
+Production chỉ chuyển sang `BMA-Production` sau khi staging, Bridge,
+`EMPLOYEE_SCAN`, Profile, Attendance và BMKCS đều PASS. Script không tự tạo hoặc
+thay đổi database production.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\deploy-native-bma-service.ps1 `
+  -Target Production `
+  -EnvFile .env.production `
+  -PackagePath C:\Path\bma-native-win-x64.zip
+```
+
+Trước lệnh trên: backup `binhminh_data`; xác nhận port `8790` trống; xác nhận
+Cloudflare `/bmapp` trỏ `http://localhost:8790`.
 
 ## Rollback
 
-1. Chuyển Tunnel route về image/version trước.
-2. Không downgrade database khi migration chỉ add table/column.
-3. Nếu migration phá vỡ tương thích, restore database backup vào instance mới,
-   verify checksum rồi mới đổi route.
-4. Raw events nhận trong khoảng sự cố được replay từ Gateway history/cursor.
+Mỗi deploy tạo release mới dưới:
+
+```text
+C:\ABMT\BMA-Services\BMA-Staging\releases
+C:\ABMT\BMA-Services\BMA-Production\releases
+```
+
+Nếu health mới thất bại, script tự trả service về binary trước. Migration chỉ
+được phép additive. Không downgrade database tự động.
 
 ## Secrets
 
-Các biến tối thiểu:
-
-```text
-ConnectionStrings__Bma
-Jwt__SigningKey
-Gateway__InboundKey
-Gateway__HistoryKey
-BMA_BOOTSTRAP_ADMIN_USERNAME
-BMA_BOOTSTRAP_ADMIN_PASSWORD
-```
-
-Secret chỉ đặt trên host/CI console chính chủ, không paste vào chat hoặc commit.
+`appsettings.Production.json` được tạo trên MinhComp. ACL chỉ cấp quyền cho
+SYSTEM, Administrators và service tương ứng. Không commit, chụp màn hình hoặc
+gửi nội dung file này.

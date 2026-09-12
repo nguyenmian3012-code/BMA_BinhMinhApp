@@ -1,76 +1,71 @@
-# Các bước Anh cần thao tác thủ công
+# Các bước Minh An cần thực hiện
 
-## Blocker gần nhất
+## Blocker hiện tại
 
-1. Trên máy MinhComp, khôi phục origin staging `8791` bằng script bên dưới.
-2. Xác nhận thư mục/source thật đang chạy Gateway/ABMT Core và ABMT Remote.
-3. Không gửi key; chỉ gửi đường dẫn repo/file và output lệnh không chứa secret.
-4. Xác nhận `com.binhminh.bma` và port local `8790`.
-5. Chọn một Samsung Fold 7 hoặc S24 Ultra làm Android pilot.
-
-## Trước staging
-
-- Tạo database/user PostgreSQL staging và đặt secret trực tiếp trên host.
-- Cấp route regex `^/bmapp-staging(/.*)?$` trong Cloudflare Tunnel, đặt trước
-  route catch-all của `gateway.abmtlab.com`; Cloudflare giữ nguyên path khi
-  chuyển tiếp đến `http://localhost:8791`.
-- Trong `.env.staging`, đặt `BMA_HOST_PORT=8791` và
-  `BMA_PATH_BASE=/bmapp-staging`; production giữ `BMA_HOST_PORT=8790` và
-  `BMA_PATH_BASE=/bmapp`.
-- Khởi động với `--project-name bma-staging`; không dùng cùng Compose project
-  với production và không chạy `docker compose down -v`.
-- Đặt `Gateway__InboundKey` giống nhau ở Gateway và BMA staging.
-- Chạy `infra/scripts/health-check.ps1 -BaseUrl http://localhost:8791
-  -PathBase /bmapp-staging` và gửi lại output không chứa secret.
-
-Khôi phục và kiểm tra local/public bằng một lệnh an toàn:
+Chạy trên MinhComp bằng PowerShell **Run as administrator**:
 
 ```powershell
-Set-Location C:\ABMT\BMA_BinhMinhApp
-git switch codex/terminal-bridge-v0-3
+Set-Location C:\ABMT\BMA_BinhMinhApp-v032
+
+git status --short --branch
 git pull --ff-only
-powershell.exe -ExecutionPolicy Bypass -File .\infra\scripts\restore-staging-origin.ps1
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\restore-staging-origin.ps1
 ```
 
-Script dừng nếu project không phải `bma-staging`, port không phải `8791`, hoặc
-path không phải `/bmapp-staging`. Script không xóa volume.
+Nhập mật khẩu PostgreSQL `postgres` khi script hỏi. Không gửi mật khẩu vào chat.
+Docker Desktop không cần chạy.
 
-Khi public health PASS, chạy synthetic ingest gồm MotorNode và BMKCS:
+Kết quả bắt buộc:
+
+```text
+Native PostgreSQL: PASS
+Windows Service: PASS
+Local health: PASS
+Runtime: windows-service
+Database: postgresql-native
+EmployeeScan: True
+```
+
+Nếu thiếu .NET 10 SDK, tải artifact `bma-native-win-x64` của commit mới nhất.
+Sau đó chạy:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\infra\scripts\staging-integration-check.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\restore-staging-origin.ps1 `
+  -PackagePath "$env:USERPROFILE\Downloads\bma-native-win-x64.zip"
 ```
 
-## Trước Android Alpha
+## Sau public health
 
-- Bật Developer options và USB debugging trên một Samsung Fold 7 hoặc S24 Ultra.
-- Cắm đúng một thiết bị, chấp nhận fingerprint máy phát triển và giữ màn hình mở.
-- Chỉ dùng artifact `bma-android-alpha-staging` từ CI xanh của đúng commit cần
-  test. Artifact phải chứa APK arm64, `BUILD_INFO.txt` và `SHA256SUMS.txt`.
-- Chạy `infra/scripts/install-android-alpha.ps1` với đường dẫn ZIP; script tự
-  kiểm checksum, ADB install, package ID và launch.
-- Thực hiện `docs/ANDROID_ALPHA_TEST.md`: login, giữ session, năm trang chính,
-  offline cache, inbox và logout.
-- APK profile từ CI dùng khóa ký tạm thời, chỉ dành cho physical-device Alpha.
-  Kênh pilot bền vững cần khóa Android nội bộ ổn định lưu ngoài Git/chat.
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\staging-integration-check.ps1
 
-## Trước ABMT Remote v1.1
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\Deploy-BMA-Terminal-v0.3.2.ps1
+```
 
-- Tìm source WinForms v1.0 bằng lệnh trong
-  [`ABMT_REMOTE_V1_1_PLAN.md`](ABMT_REMOTE_V1_1_PLAN.md).
-- Chỉ gửi path/source hoặc repository; không gửi `.env` và key.
-- Giữ ABMT và Bình Minh thành hai nhóm điều khiển độc lập.
+Gửi output PASS. Không gửi `.env.staging`.
 
-## Trước iOS/TestFlight
+## Android Alpha
 
-- Chuẩn bị Mac/Xcode hoặc macOS CI, Apple Developer và App Store Connect.
-- Tạo APNs key trong tài khoản Bình Minh; không gửi key qua chat.
-- Có ít nhất một iPhone thật để test.
+1. Bật Developer options.
+2. Bật USB debugging.
+3. Cắm một điện thoại.
+4. Chấp nhận fingerprint.
+5. Tải artifact `bma-android-alpha-staging`.
+6. Chạy `infra/scripts/install-android-alpha.ps1`.
+7. Thực hiện `docs/ANDROID_ALPHA_TEST.md`.
 
-## Block Production
+## Chưa chuyển production
 
-- Source/contract thật của Entry/Exit.
-- Công thức lương, tăng ca, nghỉ phép, grace và adjustment.
-- Privacy policy, account deletion/revocation và support contact.
-- Công thức recovery + nguồn cân đầu vào/đầu ra cùng basis.
-- Apple/Google verification và danh sách pilot được duyệt.
+Giữ `/bmapp` và port `8790` nguyên trạng. Chỉ chuyển `BMA-Production` sau khi:
+
+- Public staging PASS.
+- Synthetic BMKCS PASS.
+- Synthetic `EMPLOYEE_SCAN` PASS.
+- Profile liên kết đúng.
+- Attendance mobile hiển thị đúng.
+- Backup/restore native PASS.
