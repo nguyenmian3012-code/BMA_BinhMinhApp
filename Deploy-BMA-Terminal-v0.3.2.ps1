@@ -52,8 +52,11 @@ $localBase = "http://127.0.0.1:$port$pathBase"
 $publicBase = "https://gateway.redtigerhead.com$pathBase"
 
 Write-Host "[1/5] Deploy native BMA $bmaVersion" -ForegroundColor Cyan
-$deployArguments = @("-EnvFile", $BmaEnvPath, "-InstallRoot", $InstallRoot)
-if ($PackagePath) { $deployArguments += @("-PackagePath", $PackagePath) }
+$deployArguments = @{
+    EnvFile = $BmaEnvPath
+    InstallRoot = $InstallRoot
+}
+if ($PackagePath) { $deployArguments.PackagePath = $PackagePath }
 & $nativeDeploy @deployArguments
 
 Write-Host "[2/5] Compatibility handshake" -ForegroundColor Cyan

@@ -37,14 +37,14 @@ $publicHealthUrl = $PublicBaseUrl.TrimEnd("/") + "/health/details"
 
 Push-Location $repoRoot
 try {
-    $arguments = @(
-        "-Target", "Staging",
-        "-EnvFile", $EnvFile,
-        "-InstallRoot", $InstallRoot,
-        "-PostgresBin", $PostgresBin,
-        "-TimeoutSeconds", $TimeoutSeconds
-    )
-    if ($PackagePath) { $arguments += @("-PackagePath", $PackagePath) }
+    $arguments = @{
+        Target = "Staging"
+        EnvFile = $EnvFile
+        InstallRoot = $InstallRoot
+        PostgresBin = $PostgresBin
+        TimeoutSeconds = $TimeoutSeconds
+    }
+    if ($PackagePath) { $arguments.PackagePath = $PackagePath }
     & $nativeDeploy @arguments
 
     Write-Host "Verify public Cloudflare route" -ForegroundColor Cyan
