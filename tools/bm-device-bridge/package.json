@@ -1,0 +1,14 @@
+{
+  "name": "bm-device-bridge",
+  "version": "0.3.2",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node bridge.mjs",
+    "test": "node canonical-test.mjs && node self-test.mjs",
+    "test:unit": "node canonical-test.mjs"
+  }
+}
