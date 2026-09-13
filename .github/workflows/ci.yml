@@ -92,7 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test virtual service account registration
-        shell: pwsh
+        shell: powershell
         run: |
           $source = Get-Content infra/scripts/deploy-native-bma-service.ps1 -Raw
           if ($source -match '"password=",\s*""') {
