@@ -1,0 +1,28 @@
+@page "/admin/accounts"
+@model Bma.Pages.Admin.Accounts.IndexModel
+@{
+    ViewData["Title"] = "Tài khoản";
+}
+<h1>Tài khoản chờ duyệt</h1>
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <p class="error">@Model.ErrorMessage</p>
+}
+<section class="card table-wrap">
+<table>
+    <thead><tr><th>Tài khoản</th><th>Họ tên</th><th>Mã NV</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
+    <tbody>
+    @foreach (var item in Model.Items)
+    {
+        <tr>
+            <td>@item.UserName</td><td>@item.DisplayName</td><td>@item.EmployeeCode</td><td>@item.CreatedAt.ToLocalTime()</td>
+            <td class="actions">
+                <form method="post" asp-page-handler="Approve" asp-route-id="@item.Id"><button class="approve">Duyệt</button></form>
+                <form method="post" asp-page-handler="Reject" asp-route-id="@item.Id"><button class="danger">Từ chối</button></form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+@if (Model.Items.Count == 0) { <p>Không có tài khoản đang chờ.</p> }
+</section>

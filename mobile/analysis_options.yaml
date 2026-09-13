@@ -1,0 +1,10 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    avoid_print: error
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    use_super_parameters: true

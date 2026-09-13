@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gateway.abmtlab.com/contracts/bma/motor-state-changed-v1.schema.json",
+  "title": "Motor State Changed Payload V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["motor_id", "position", "state", "heartbeat_at"],
+  "properties": {
+    "motor_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "position": { "type": "string", "enum": ["INPUT", "OUTPUT"] },
+    "state": { "type": "string", "enum": ["ON", "OFF"] },
+    "heartbeat_at": { "type": "string", "format": "date-time" },
+    "firmware_version": { "type": ["string", "null"], "maxLength": 32 }
+  }
+}
