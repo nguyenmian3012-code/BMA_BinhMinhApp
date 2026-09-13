@@ -142,9 +142,9 @@ function Test-PackageChecksums {
 function Invoke-Sc {
     param([string[]]$Arguments)
 
-    & sc.exe @Arguments | Out-Null
+    $result = @(& sc.exe @Arguments 2>&1)
     if ($LASTEXITCODE -ne 0) {
-        throw "sc.exe failed: $($Arguments -join ' ')"
+        throw "sc.exe failed (exit $LASTEXITCODE): $($result -join [Environment]::NewLine)"
     }
 }
 
@@ -370,7 +370,7 @@ if (!$existingService) {
 
 try {
     Invoke-Sc @("config", $serviceName, "binPath=", ('"{0}"' -f $appExe.FullName), `
-        "start=", "delayed-auto", "obj=", "NT SERVICE\$serviceName", "password=", "")
+        "start=", "delayed-auto", "obj=", "NT SERVICE\$serviceName")
     Invoke-Sc @("failure", $serviceName, "reset=", "86400", "actions=", `
         "restart/5000/restart/15000/restart/30000")
 

@@ -5,7 +5,9 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 
 ## Preconditions
 
-- Branch: `codex/terminal-bridge-v0-3`.
+- Branch: `codex/windows-native-runtime-v0-3-3`.
+- `BMA-Staging` local/public health must PASS; the previous CI result alone is
+  not an on-host integration result.
 - Canonical staging integration must eventually show both
   `PostgreSQL scalar preflight: PASS` and final `Result : PASS`.
 - Android artifact build metadata must contain:
@@ -19,13 +21,14 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 
 1. Download the latest `bma-android-alpha-staging` artifact from the PR's
    successful BMA CI run. Keep the ZIP intact.
-2. Pull the matching branch on MinhComp.
+2. Fetch the matching branch on MinhComp; do not overwrite local edits.
 3. Run:
 
 ```powershell
-Set-Location "C:\ABMT\BMA_BinhMinhApp"
-git switch codex/terminal-bridge-v0-3
-git pull --ff-only
+Set-Location "C:\ABMT\BMA_BinhMinhApp-v032"
+git status --short
+git fetch origin
+git switch --detach origin/codex/windows-native-runtime-v0-3-3
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\infra\scripts\install-android-alpha.ps1 `

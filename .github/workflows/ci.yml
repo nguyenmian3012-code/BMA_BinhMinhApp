@@ -87,6 +87,34 @@ jobs:
             Deploy-BMA-Terminal-v0.3.2.ps1 infra/scripts ops \
             docs/DEPLOYMENT.md docs/OWNER_ACTIONS.md README.md
 
+  windows-service-registration:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test virtual service account registration
+        shell: pwsh
+        run: |
+          $source = Get-Content infra/scripts/deploy-native-bma-service.ps1 -Raw
+          if ($source -match '"password=",\s*""') {
+            throw 'Virtual service accounts must not receive a password argument.'
+          }
+          $name = "BMA-CI-$env:GITHUB_RUN_ID"
+          $binary = Join-Path $env:WINDIR 'System32\whoami.exe'
+          New-Service -Name $name -BinaryPathName ('"{0}"' -f $binary) -StartupType Manual | Out-Null
+          try {
+            $output = & sc.exe config $name 'binPath=' ('"{0}"' -f $binary) `
+              'start=' 'delayed-auto' 'obj=' "NT SERVICE\$name" 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "sc.exe config failed: $($output -join '; ')" }
+            $details = & sc.exe qc $name
+            if ($LASTEXITCODE -ne 0 -or
+                ($details -join ' ') -notmatch [regex]::Escape("NT SERVICE\$name")) {
+              throw 'Virtual service account was not registered.'
+            }
+          }
+          finally {
+            & sc.exe delete $name | Out-Null
+          }
+
   backend:
     runs-on: ubuntu-latest
     services:
