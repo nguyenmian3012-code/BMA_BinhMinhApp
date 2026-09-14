@@ -1,0 +1,18 @@
+@page "/admin/schedules"
+@model Bma.Pages.Admin.Schedules.IndexModel
+@{
+    ViewData["Title"] = "Lịch chạy";
+}
+<h1>Lịch chạy tương lai</h1>
+<section class="card">
+    <form method="post" class="form-grid">
+        <label>Giờ dự kiến<input asp-for="Input.PlannedStartLocal" type="datetime-local" /></label>
+        <label>Trạng thái<select asp-for="Input.Status"><option>PLANNED</option><option>CONFIRMED</option></select></label>
+        <label class="wide">Ghi chú<input asp-for="Input.Note" /></label>
+        <button class="primary" type="submit">Thêm lịch</button>
+    </form>
+</section>
+<section class="card table-wrap">
+<table><thead><tr><th>Thời gian</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>
+<tbody>@foreach (var item in Model.Items) { <tr><td>@item.PlannedStartAt.ToLocalTime()</td><td>@item.Status</td><td>@item.Note</td></tr> }</tbody></table>
+</section>

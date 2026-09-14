@@ -1,0 +1,277 @@
+name: BMA CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bma-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate contracts and payload hashes
+        run: node infra/scripts/validate-contracts.mjs
+      - name: Validate official BM7 brand assets
+        run: node infra/scripts/validate-brand-assets.mjs
+      - name: Scan tracked files for credentials
+        run: bash infra/scripts/secret-scan.sh
+      - name: Parse PowerShell operational scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem infra/scripts -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $failed = $true
+              Write-Error "$($_.FullName): $($parseErrors -join '; ')"
+            }
+          }
+          if ($failed) { throw "PowerShell syntax validation failed." }
+      - name: Reject command-line SQL in PowerShell
+        shell: pwsh
+        run: |
+          $unsafeSql = Get-ChildItem infra/scripts -Filter *.ps1 |
+            Select-String -Pattern '(?i)--command'
+          if ($unsafeSql) {
+            $unsafeSql | ForEach-Object {
+              Write-Error "$($_.Path):$($_.LineNumber): stream SQL through stdin instead of docker command arguments"
+            }
+            throw "Unsafe PowerShell-to-Docker SQL transport detected."
+          }
+      - name: Validate production and staging Compose isolation
+        run: |
+          docker compose --project-name bma-production --env-file .env.example config >/tmp/bma-production-compose.yml
+          BMA_HOST_PORT=8791 BMA_PATH_BASE=/bmapp-staging \
+            docker compose --project-name bma-staging --env-file .env.example config >/tmp/bma-staging-compose.yml
+          grep --quiet 'published: "8790"' /tmp/bma-production-compose.yml
+          grep --quiet 'published: "8791"' /tmp/bma-staging-compose.yml
+          grep --quiet 'App__PathBase: /bmapp-staging' /tmp/bma-staging-compose.yml
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bma_ci
+          POSTGRES_USER: bma_ci
+          POSTGRES_PASSWORD: bma_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bma_ci -d bma_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj
+      - name: Build
+        run: dotnet build backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-restore
+      - name: Test
+        run: dotnet test backend/tests/Bma.Api.Tests/Bma.Api.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage"
+      - name: Runtime smoke test under configured PathBase
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://127.0.0.1:8790
+          App__PathBase: /bmapp-ci
+          ConnectionStrings__Bma: Host=127.0.0.1;Port=5432;Database=bma_ci;Username=bma_ci;Password=bma_ci_only
+          Jwt__SigningKey: ci-only-signing-key-at-least-32-bytes-long
+          Gateway__InboundKey: ci-only-gateway-key
+          BMA_BOOTSTRAP_ADMIN_USERNAME: ci-admin
+          BMA_BOOTSTRAP_ADMIN_PASSWORD: ci-only-bootstrap-password
+        run: |
+          dotnet run --project backend/src/Bma.Api/Bma.Api.csproj --configuration Release --no-build > /tmp/bma-ci.log 2>&1 &
+          bma_pid=$!
+          trap 'kill "$bma_pid" 2>/dev/null || true; cat /tmp/bma-ci.log' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health >/dev/null; then break; fi
+            if ! kill -0 "$bma_pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/health >/dev/null
+          admin_login_html=$(curl --fail --silent --cookie-jar /tmp/bma-admin.cookies \
+            http://127.0.0.1:8790/bmapp-ci/admin/login)
+          printf '%s' "$admin_login_html" | grep --quiet "BMA Admin"
+          antiforgery_token=$(printf '%s' "$admin_login_html" | \
+            sed -n 's/.*name="__RequestVerificationToken"[^>]*value="\([^"]*\)".*/\1/p')
+          test -n "$antiforgery_token"
+          admin_login_status=$(curl --silent --output /tmp/bma-admin-login-response.html \
+            --write-out '%{http_code}' --cookie /tmp/bma-admin.cookies \
+            --cookie-jar /tmp/bma-admin.cookies --request POST \
+            --data-urlencode 'Input.Username=ci-admin' \
+            --data-urlencode 'Input.Password=ci-only-bootstrap-password' \
+            --data-urlencode "__RequestVerificationToken=$antiforgery_token" \
+            http://127.0.0.1:8790/bmapp-ci/admin/login)
+          test "$admin_login_status" = "302"
+          awk '$6 == "BMA-Admin" && $3 == "/bmapp-ci" { found=1 } END { exit !found }' \
+            /tmp/bma-admin.cookies
+          curl --fail --silent --cookie /tmp/bma-admin.cookies \
+            http://127.0.0.1:8790/bmapp-ci/admin | grep --quiet "Tổng quan hệ thống"
+          curl --fail --silent http://127.0.0.1:8790/bmapp-ci/css/admin.css | grep --quiet "background:#7b1015"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8790/health)" = "404"
+
+          login_json=$(curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --data '{"username":"ci-admin","password":"ci-only-bootstrap-password","device_name":"CI"}' \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/auth/login)
+          access_token=$(printf '%s' "$login_json" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+          refresh_token=$(printf '%s' "$login_json" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p')
+          test -n "$access_token"
+          test -n "$refresh_token"
+
+          occurred_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          input_payload="{\"motor_id\":\"BM-INPUT-CONVEYOR\",\"position\":\"INPUT\",\"state\":\"ON\",\"heartbeat_at\":\"$occurred_at\"}"
+          input_hash=$(printf '%s' "$input_payload" | sha256sum | cut -d' ' -f1)
+          curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'X-BMA-Gateway-Key: ci-only-gateway-key' \
+            --header 'Idempotency-Key: ci-input-1' \
+            --data "{\"event_id\":\"ci-input-1\",\"event_type\":\"MOTOR_STATE_CHANGED\",\"source_system\":\"MOTORNODE\",\"source_device_id\":\"M1P-INPUT-001\",\"sequence\":1,\"occurred_at\":\"$occurred_at\",\"schema_version\":\"1.0\",\"correlation_id\":\"ci-smoke\",\"payload\":$input_payload,\"payload_hash\":\"$input_hash\",\"signature\":null}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/integrations/events >/dev/null
+
+          output_payload="{\"motor_id\":\"BM-OUTPUT-CONVEYOR\",\"position\":\"OUTPUT\",\"state\":\"OFF\",\"heartbeat_at\":\"$occurred_at\"}"
+          output_hash=$(printf '%s' "$output_payload" | sha256sum | cut -d' ' -f1)
+          curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'X-BMA-Gateway-Key: ci-only-gateway-key' \
+            --header 'Idempotency-Key: ci-output-1' \
+            --data "{\"event_id\":\"ci-output-1\",\"event_type\":\"MOTOR_STATE_CHANGED\",\"source_system\":\"MOTORNODE\",\"source_device_id\":\"M1P-OUTPUT-001\",\"sequence\":1,\"occurred_at\":\"$occurred_at\",\"schema_version\":\"1.0\",\"correlation_id\":\"ci-smoke\",\"payload\":$output_payload,\"payload_hash\":\"$output_hash\",\"signature\":null}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/integrations/events >/dev/null
+
+          for attempt in {1..15}; do
+            dashboard=$(curl --fail --silent \
+              --header "Authorization: Bearer $access_token" \
+              http://127.0.0.1:8790/bmapp-ci/api/v1/dashboard)
+            if printf '%s' "$dashboard" | grep --quiet '"plant_state":"STARTING"' && \
+               printf '%s' "$dashboard" | grep --quiet '"running_since":"'; then break; fi
+            sleep 1
+          done
+          printf '%s' "$dashboard" | grep --quiet '"plant_state":"STARTING"'
+          printf '%s' "$dashboard" | grep --quiet '"running_since":"'
+
+          refresh_pids=""
+          for slot in 1 2; do
+            (curl --silent --output "/tmp/refresh-$slot.json" --write-out '%{http_code}' \
+              --request POST --header 'Content-Type: application/json' \
+              --data "{\"refresh_token\":\"$refresh_token\",\"device_name\":\"CI\"}" \
+              http://127.0.0.1:8790/bmapp-ci/api/v1/auth/refresh > "/tmp/refresh-$slot.status") &
+            refresh_pids="$refresh_pids $!"
+          done
+          for refresh_pid in $refresh_pids; do wait "$refresh_pid"; done
+          refresh_statuses=$(sort -n /tmp/refresh-*.status | paste -sd, -)
+          test "$refresh_statuses" = "200,401"
+      - name: Build production container
+        run: docker build --file backend/Dockerfile --tag bma-core:ci .
+
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create disposable Android shell
+        run: |
+          flutter create --platforms=android --org com.binhminh --project-name bma "$RUNNER_TEMP/bma"
+          rm -rf "$RUNNER_TEMP/bma/lib" "$RUNNER_TEMP/bma/test"
+          cp -R mobile/lib "$RUNNER_TEMP/bma/lib"
+          cp -R mobile/test "$RUNNER_TEMP/bma/test"
+          cp -R mobile/assets "$RUNNER_TEMP/bma/assets"
+          cp mobile/pubspec.yaml mobile/analysis_options.yaml "$RUNNER_TEMP/bma/"
+          sed -i 's/android:label="bma"/android:label="Bình Minh App"/' \
+            "$RUNNER_TEMP/bma/android/app/src/main/AndroidManifest.xml"
+          pwsh -NoProfile -File infra/scripts/apply-mobile-branding.ps1 \
+            -MobileRoot "$RUNNER_TEMP/bma"
+      - name: Resolve packages
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter pub get
+      - name: Analyze
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter analyze --fatal-infos
+      - name: Test
+        working-directory: ${{ runner.temp }}/bma
+        run: flutter test
+      - name: Restore stable Android Alpha signing key
+        env:
+          BMA_ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.BMA_ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64"
+          mkdir -p "$HOME/.android"
+          printf '%s' "$BMA_ANDROID_DEBUG_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+
+      - name: Build Android Staging Alpha APK
+        working-directory: ${{ runner.temp }}/bma
+        env:
+          BMA_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          flutter build apk --profile --target-platform android-arm64 \
+            --dart-define=BMA_API_BASE_URL=https://gateway.abmtlab.com/bmapp-staging/api/v1
+          artifact_dir="$RUNNER_TEMP/bma-alpha"
+          short_sha=$(printf '%s' "$BMA_SOURCE_SHA" | cut -c1-7)
+          apk_name="BMA-Alpha-$short_sha-arm64.apk"
+          mkdir -p "$artifact_dir"
+          cp build/app/outputs/flutter-apk/app-profile.apk "$artifact_dir/$apk_name"
+          {
+            echo "source_commit=$BMA_SOURCE_SHA"
+            echo "workflow_commit=$GITHUB_SHA"
+            echo "package_id=com.binhminh.bma"
+            echo "build_mode=profile"
+            echo "target_abi=arm64-v8a"
+            echo "api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1"
+            echo "brand_asset=BM7-official"
+            echo "signing_key=stable-alpha-debug-v1"
+            echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > "$artifact_dir/BUILD_INFO.txt"
+          (
+            cd "$artifact_dir"
+            sha256sum "$apk_name" > SHA256SUMS.txt
+          )
+      - name: Verify Android Staging Alpha APK
+        run: |
+          cd "$RUNNER_TEMP/bma-alpha"
+          test "$(find . -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
+          sha256sum --check SHA256SUMS.txt
+          grep --quiet 'package_id=com.binhminh.bma' BUILD_INFO.txt
+          grep --quiet 'build_mode=profile' BUILD_INFO.txt
+          grep --quiet 'target_abi=arm64-v8a' BUILD_INFO.txt
+          grep --quiet 'api_base_url=https://gateway.abmtlab.com/bmapp-staging/api/v1' BUILD_INFO.txt
+          grep --quiet 'brand_asset=BM7-official' BUILD_INFO.txt
+          grep --quiet 'signing_key=stable-alpha-debug-v1' BUILD_INFO.txt
+      - name: Upload Android Staging Alpha APK when quota is available
+        id: apk_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: bma-android-alpha-staging
+          path: ${{ runner.temp }}/bma-alpha
+          retention-days: 3
+          compression-level: 0
+      - name: Report optional artifact upload failure
+        if: steps.apk_upload.outcome == 'failure'
+        run: echo "::warning::APK build and checksum passed, but GitHub Actions artifact storage is unavailable. Use the signed /bmapp/download release path."
