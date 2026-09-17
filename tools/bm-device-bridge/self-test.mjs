@@ -11,7 +11,31 @@ import { fileURLToPath } from "node:url";
 const testDirectory = mkdtempSync(join(tmpdir(), "bm-device-bridge-"));
 const databasePath = join(testDirectory, "bridge.sqlite");
 const employeeMapPath = join(testDirectory, "employee-map.json");
-const bridgePort = 18789;
+async function getFreePort() {
+  const probe = createServer();
+
+  await new Promise((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = probe.address();
+  const port = typeof address === "object" && address
+    ? address.port
+    : null;
+
+  await new Promise((resolve, reject) => {
+    probe.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+
+  if (!port) throw new Error("Could not reserve a test port.");
+  return port;
+}
+
+const bridgePort = await getFreePort();
 let childOutput = "";
 const receivedByGateway = [];
 
