@@ -4,8 +4,10 @@ $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyCont
 
 if ($existing) {
     Set-NetFirewallRule -DisplayName $ruleName -Enabled True -Action Allow -Direction Inbound
-    Set-NetFirewallAddressFilter -AssociatedNetFirewallRule $existing -RemoteAddress "192.168.1.227"
-    Set-NetFirewallPortFilter -AssociatedNetFirewallRule $existing -Protocol TCP -LocalPort 8789
+    $addressFilter = $existing | Get-NetFirewallAddressFilter
+    $addressFilter | Set-NetFirewallAddressFilter -RemoteAddress "192.168.1.227"
+    $portFilter = $existing | Get-NetFirewallPortFilter
+    $portFilter | Set-NetFirewallPortFilter -Protocol TCP -LocalPort 8789
     Write-Host "Da cap nhat firewall: chi Terminal 192.168.1.227 duoc vao TCP 8789." -ForegroundColor Green
 } else {
     New-NetFirewallRule `
