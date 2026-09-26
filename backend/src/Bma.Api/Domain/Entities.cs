@@ -19,6 +19,7 @@ public sealed class AppUser
     public required string PasswordHash { get; set; }
     public AccountStatus Status { get; set; } = AccountStatus.Pending;
     public string Roles { get; set; } = "Employee";
+    public int AuthVersion { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ApprovedAt { get; set; }
     public Guid? ApprovedBy { get; set; }
@@ -196,6 +197,8 @@ public sealed class EmployeeProfile
     public required string FullName { get; set; }
     public string? Department { get; set; }
     public string? Position { get; set; }
+    public DateOnly? HiredOn { get; set; }
+    public bool IsActive { get; set; } = true;
     public string? ManagerEmployeeCode { get; set; }
     public string Responsibilities { get; set; } = "";
     public string Obligations { get; set; } = "";

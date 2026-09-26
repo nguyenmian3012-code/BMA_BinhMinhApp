@@ -31,7 +31,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     OverviewScreen(repository: widget.repository),
     QualityScreen(repository: widget.repository),
     AttendanceScreen(repository: widget.repository),
-    ProfileScreen(repository: widget.repository),
+    ProfileScreen(repository: widget.repository, state: widget.state),
   ];
 
   static const _titles = [

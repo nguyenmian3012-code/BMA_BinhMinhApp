@@ -10,6 +10,12 @@ class BmaRepository {
   Future<CachedResponse> quality() => api.getCached('/quality/latest?limit=30');
   Future<CachedResponse> attendance() => api.getCached('/attendance/me');
   Future<CachedResponse> profile() => api.getCached('/profile/me');
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await api.post('/auth/change-password', {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+  }
   Future<CachedResponse> announcements() async {
     final response = await api.getCached('/announcements');
     applyLocalAnnouncementReads(

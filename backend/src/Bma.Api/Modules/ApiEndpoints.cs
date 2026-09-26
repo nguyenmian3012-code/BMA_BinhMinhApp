@@ -108,6 +108,8 @@ public static class ApiEndpoints
                     x.FullName,
                     x.Department,
                     x.Position,
+                    x.HiredOn,
+                    x.IsActive,
                     x.ManagerEmployeeCode,
                     x.Responsibilities,
                     x.Obligations,

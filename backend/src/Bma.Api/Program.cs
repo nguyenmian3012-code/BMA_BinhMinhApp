@@ -89,6 +89,14 @@ builder.Services.AddAuthentication(options =>
         NameClaimType = System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.UniqueName,
         RoleClaimType = "role"
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            if (!await AccountIsCurrent(context.HttpContext.RequestServices, context.Principal!))
+                context.Fail("Account inactive or roles changed");
+        }
+    };
 })
 .AddCookie(BmaAuthSchemes.Cookie, options =>
 {
@@ -105,10 +113,16 @@ builder.Services.AddAuthentication(options =>
         : CookieSecurePolicy.Always;
     options.SlidingExpiration = true;
     options.ExpireTimeSpan = TimeSpan.FromHours(12);
+    options.Events.OnValidatePrincipal = async context =>
+    {
+        if (!await AccountIsCurrent(context.HttpContext.RequestServices, context.Principal!))
+            context.RejectPrincipal();
+    };
 });
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Admin", policy => policy.RequireRole("Admin"))
-    .AddPolicy("HrOrAdmin", policy => policy.RequireRole("HR", "Admin"));
+    .AddPolicy("HrOrAdmin", policy => policy.RequireRole("HR", "Admin"))
+    .AddPolicy("PeopleEditor", policy => policy.RequireRole("Admin", "HR", "Accounting", "Operations", "Executive"));
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
@@ -220,6 +234,23 @@ app.MapRazorPages();
 app.MapGet("/", () => Results.Redirect($"{pathBase}/admin")).AllowAnonymous();
 
 await app.RunAsync();
+
+static async Task<bool> AccountIsCurrent(IServiceProvider services, ClaimsPrincipal principal)
+{
+    var rawId = principal.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub) ??
+                principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (!Guid.TryParse(rawId, out var id)) return false;
+    var db = services.GetRequiredService<BmaDbContext>();
+    var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
+    if (user is not { Status: Bma.Domain.AccountStatus.Approved }) return false;
+    if (!int.TryParse(principal.FindFirstValue("auth_version") ?? "0", out var authVersion) ||
+        authVersion != user.AuthVersion) return false;
+    if (!AuthService.Roles(user).OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+        .SequenceEqual(principal.FindAll("role").Concat(principal.FindAll(ClaimTypes.Role))
+            .Select(x => x.Value).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)) return false;
+    return !await db.EmployeeProfiles.AsNoTracking().AnyAsync(x => x.UserId == id && !x.IsActive);
+}
 
 public partial class Program
 {

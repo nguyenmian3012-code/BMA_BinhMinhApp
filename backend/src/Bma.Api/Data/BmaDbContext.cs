@@ -158,6 +158,7 @@ public sealed class BmaDbContext(DbContextOptions<BmaDbContext> options) : DbCon
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.EmployeeCode).IsUnique();
             e.HasIndex(x => x.UserId).IsUnique();
+            e.Property(x => x.HiredOn).HasColumnType("date");
         });
 
         model.Entity<Announcement>(e =>

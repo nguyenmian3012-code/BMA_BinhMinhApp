@@ -9,6 +9,7 @@ public sealed record RegisterRequest(string Username, string Password, string Di
 public sealed record LoginRequest(string Username, string Password, string? DeviceName);
 public sealed record RefreshRequest(string RefreshToken, string? DeviceName);
 public sealed record RevokeRequest(string RefreshToken, string? Reason);
+public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 public static class AuthEndpoints
 {
@@ -62,6 +63,14 @@ public static class AuthEndpoints
             await auth.RevokeAsync(id, request.RefreshToken,
                 string.IsNullOrWhiteSpace(request.Reason) ? "USER_LOGOUT" : request.Reason!, ct);
             return Results.NoContent();
+        }).RequireAuthorization();
+
+        group.MapPost("/change-password", async (ChangePasswordRequest request, ClaimsPrincipal user,
+            AuthService auth, CancellationToken ct) =>
+        {
+            var changed = await auth.ChangePasswordAsync(UserId(user), request.CurrentPassword,
+                request.NewPassword, ct);
+            return changed ? Results.NoContent() : Results.BadRequest(new { error = "PASSWORD_CHANGE_REJECTED" });
         }).RequireAuthorization();
 
         group.MapGet("/me", async (ClaimsPrincipal principal, BmaDbContext db,
