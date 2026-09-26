@@ -1,0 +1,18 @@
+@page "/admin"
+@model Bma.Pages.Admin.IndexModel
+@{
+    ViewData["Title"] = "Tổng quan";
+}
+<h1>Tổng quan hệ thống</h1>
+<div class="stats">
+    <article><strong>@Model.PendingAccounts</strong><span>Tài khoản chờ duyệt</span></article>
+    <article><strong>@Model.UnprocessedEvents</strong><span>Sự kiện chờ projection</span></article>
+    <article><strong>@Model.FailedEvents</strong><span>Sự kiện cần kiểm tra</span></article>
+    <article><strong>@Model.AttendanceReviews</strong><span>Ca chấm công cần duyệt</span></article>
+    <article><strong>@Model.PendingPush</strong><span>Thông báo chờ push</span></article>
+</div>
+<section class="card">
+    <h2>Nguyên tắc vận hành</h2>
+    <p>Raw event là bất biến. Sửa chấm công phải tạo adjustment/audit; không chỉnh trực tiếp dữ liệu gốc.</p>
+    <p>Push thật được bật sau khi FCM/APNs key được đặt trên host. Inbox trong app vẫn hoạt động độc lập.</p>
+</section>

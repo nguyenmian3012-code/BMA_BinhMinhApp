@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gateway.abmtlab.com/contracts/bma/attendance-event-v1.schema.json",
+  "title": "Attendance Event Payload V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["employee_id", "evidence_ref"],
+  "properties": {
+    "employee_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "evidence_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "verification_method": { "type": ["string", "null"], "maxLength": 64 },
+    "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+  }
+}

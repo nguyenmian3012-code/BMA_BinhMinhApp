@@ -1,0 +1,18 @@
+{
+  "event_id": "entry-station-01-000123",
+  "event_type": "EMPLOYEE_ENTRY",
+  "source_system": "ENTRY_EXIT",
+  "source_device_id": "ENTRY-STATION-01",
+  "sequence": 123,
+  "occurred_at": "2026-08-30T00:02:10Z",
+  "schema_version": "1.0",
+  "correlation_id": "shift-20260830-a",
+  "payload": {
+    "employee_id": "BM-DEMO-001",
+    "evidence_ref": "evidence://entry-station-01/000123",
+    "verification_method": "INDEPENDENT_STATION",
+    "confidence": null
+  },
+  "payload_hash": "2558d6998878c7995fb8b4250602ce77a2771548f9d2953673b8809f87c9beee",
+  "signature": null
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gateway.abmtlab.com/contracts/bma/canonical-event-v1.schema.json",
+  "title": "BMA Canonical Event V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "source_system",
+    "occurred_at",
+    "schema_version",
+    "payload",
+    "payload_hash"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "MOTOR_STATE_CHANGED",
+        "QUALITY_RESULT_PUBLISHED",
+        "EMPLOYEE_SCAN",
+        "EMPLOYEE_ENTRY",
+        "EMPLOYEE_EXIT",
+        "PRODUCTION_MASS_RECORDED",
+        "ANNOUNCEMENT_PUBLISHED"
+      ]
+    },
+    "source_system": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "source_device_id": { "type": ["string", "null"], "maxLength": 100 },
+    "sequence": { "type": ["integer", "null"], "minimum": 0 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "schema_version": { "const": "1.0" },
+    "correlation_id": { "type": ["string", "null"], "maxLength": 100 },
+    "payload": { "type": "object" },
+    "payload_hash": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "signature": { "type": ["string", "null"], "maxLength": 512 }
+  }
+}

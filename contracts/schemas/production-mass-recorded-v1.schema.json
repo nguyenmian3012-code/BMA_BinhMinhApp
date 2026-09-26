@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gateway.abmtlab.com/contracts/bma/production-mass-recorded-v1.schema.json",
+  "title": "Production Mass Recorded Payload V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["period_id", "kind", "mass_kg", "basis", "approved"],
+  "properties": {
+    "period_id": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "kind": { "type": "string", "enum": ["CASSAVA_INPUT", "STARCH_OUTPUT"] },
+    "mass_kg": { "type": "number", "exclusiveMinimum": 0 },
+    "basis": { "type": "string", "enum": ["WET", "DRY", "AS_WEIGHED"] },
+    "approved": { "type": "boolean" },
+    "formula_version": { "type": "string", "minLength": 1, "maxLength": 32 }
+  }
+}

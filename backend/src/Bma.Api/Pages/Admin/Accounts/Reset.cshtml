@@ -1,0 +1,20 @@
+@page "/admin/accounts/reset"
+@model Bma.Pages.Admin.Accounts.ResetModel
+@{
+    ViewData["Title"] = "Khôi phục mật khẩu";
+}
+<h1>Khôi phục mật khẩu</h1>
+<p>Chỉ quản trị viên được cấp mật khẩu mới sau khi xác minh nhân viên trực tiếp.</p>
+<section class="card">
+    <form method="post" class="form-grid">
+        <label>Tên đăng nhập<input name="username" required minlength="3" maxlength="64" autocomplete="off" /></label>
+        <div><button class="primary" type="submit">Tạo mật khẩu mới</button></div>
+    </form>
+    @if (!string.IsNullOrEmpty(Model.ErrorMessage)) { <p class="error" role="alert">@Model.ErrorMessage</p> }
+    @if (Model.TemporaryPassword is not null)
+    {
+        <p role="status">Tài khoản: <strong>@Model.ResetUserName</strong></p>
+        <p>Mật khẩu mới: <strong>@Model.TemporaryPassword</strong></p>
+        <p>Giao riêng cho nhân viên. Yêu cầu đổi ngay trong mục Cá nhân. Mật khẩu chỉ hiện lần này.</p>
+    }
+</section>

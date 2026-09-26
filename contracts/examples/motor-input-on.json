@@ -1,0 +1,19 @@
+{
+  "event_id": "m1p-input-001-00000015",
+  "event_type": "MOTOR_STATE_CHANGED",
+  "source_system": "MOTORNODE",
+  "source_device_id": "M1P-INPUT-001",
+  "sequence": 15,
+  "occurred_at": "2026-08-30T02:15:20Z",
+  "schema_version": "1.0",
+  "correlation_id": "m1p-input-001-15",
+  "payload": {
+    "motor_id": "BM-INPUT-CONVEYOR",
+    "position": "INPUT",
+    "state": "ON",
+    "heartbeat_at": "2026-08-30T02:15:20Z",
+    "firmware_version": "1.4.0"
+  },
+  "payload_hash": "a7a814b4ffe6aa99c3a79609d5fafea491e8c72886bbdd4a89ceadc7903cf50a",
+  "signature": null
+}

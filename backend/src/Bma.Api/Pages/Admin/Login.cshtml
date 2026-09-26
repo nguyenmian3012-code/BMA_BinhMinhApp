@@ -1,0 +1,16 @@
+@page "/admin/login"
+@model Bma.Pages.Admin.LoginModel
+@{
+    ViewData["Title"] = "Đăng nhập";
+}
+<section class="login-card">
+    <h1>BMA Admin</h1>
+    <p>Đăng nhập bằng tài khoản quản trị đã được phê duyệt.</p>
+    <form method="post">
+        <div asp-validation-summary="ModelOnly" class="error"></div>
+        <label>Tên đăng nhập<input asp-for="Input.Username" autocomplete="username" /></label>
+        <label>Mật khẩu<input asp-for="Input.Password" type="password" autocomplete="current-password" /></label>
+        <input asp-for="ReturnUrl" type="hidden" />
+        <button class="primary" type="submit">Đăng nhập</button>
+    </form>
+</section>
