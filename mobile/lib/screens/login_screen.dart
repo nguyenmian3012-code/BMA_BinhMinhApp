@@ -88,6 +88,17 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: widget.state.loading ? null : _register,
                         child: const Text('Tạo tài khoản mới'),
                       ),
+                      TextButton(
+                        onPressed: () => showDialog<void>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Quên mật khẩu'),
+                            content: const Text('Liên hệ Kế toán hoặc quản trị viên. Xác minh trực tiếp để được cấp mật khẩu mới. Sau khi đăng nhập, vào Cá nhân → Đổi mật khẩu.'),
+                            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))],
+                          ),
+                        ),
+                        child: const Text('Quên mật khẩu?'),
+                      ),
                     ],
                   ),
                 ),

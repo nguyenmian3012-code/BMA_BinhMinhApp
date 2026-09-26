@@ -17,28 +17,30 @@ public sealed class LoginModel(AuthService auth) : PageModel
     [BindProperty(SupportsGet = true)] public string? ReturnUrl { get; set; }
 
     public IActionResult OnGet() => User.Identity?.IsAuthenticated == true
-        ? RedirectToPage("/Admin/Index") : Page();
+        ? RedirectToPage(User.IsInRole("Admin") ? "/Admin/Index" : "/Admin/Employees/Index") : Page();
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
         if (!ModelState.IsValid) return Page();
-        var user = await auth.VerifyAdminAsync(Input.Username, Input.Password, ct);
+        var user = await auth.VerifyPeopleEditorAsync(Input.Username, Input.Password, ct);
         if (user is null)
         {
-            ModelState.AddModelError(string.Empty, "Tài khoản hoặc quyền quản trị không hợp lệ.");
+            ModelState.AddModelError(string.Empty, "Tài khoản hoặc quyền quản lý nhân sự không hợp lệ.");
             return Page();
         }
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.UserName),
-            new("display_name", user.DisplayName)
+            new("display_name", user.DisplayName),
+            new("auth_version", user.AuthVersion.ToString(System.Globalization.CultureInfo.InvariantCulture))
         };
         claims.AddRange(AuthService.Roles(user).Select(x => new Claim(ClaimTypes.Role, x)));
         await HttpContext.SignInAsync(BmaAuthSchemes.Cookie,
             new ClaimsPrincipal(new ClaimsIdentity(claims, BmaAuthSchemes.Cookie)),
             new AuthenticationProperties { IsPersistent = true, AllowRefresh = true });
-        return Url.IsLocalUrl(ReturnUrl) ? LocalRedirect(ReturnUrl!) : RedirectToPage("/Admin/Index");
+        return Url.IsLocalUrl(ReturnUrl) ? LocalRedirect(ReturnUrl!) :
+            RedirectToPage(AuthService.HasRole(user, "Admin") ? "/Admin/Index" : "/Admin/Employees/Index");
     }
 
     public sealed class LoginInput
