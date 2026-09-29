@@ -378,10 +378,17 @@ try {
         "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" `
         "NT SERVICE\${serviceName}:(OI)(CI)RX" /T /C | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to protect native release ACL." }
+    # Files with inheritance removed need effective ACEs, not just directory inheritance ACEs.
+    & icacls.exe $releaseRoot /grant `
+        "*S-1-5-18:F" "*S-1-5-32-544:F" "NT SERVICE\${serviceName}:RX" /T /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to grant native release file access." }
     & icacls.exe $keysRoot /inheritance:r /grant:r `
         "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" `
         "NT SERVICE\${serviceName}:(OI)(CI)M" /T /C | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to protect Data Protection key ACL." }
+    & icacls.exe $keysRoot /grant `
+        "*S-1-5-18:F" "*S-1-5-32-544:F" "NT SERVICE\${serviceName}:M" /T /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to grant Data Protection key file access." }
 
     Start-Service -Name $serviceName
     $localHealthUrl = "http://127.0.0.1:$configuredPort$configuredPathBase/health/details"
