@@ -209,6 +209,12 @@ public sealed class EmployeeProfile
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
+public static class EmployeeCodeRules
+{
+    public static bool IsValid(string value) =>
+        System.Text.RegularExpressions.Regex.IsMatch(value, @"^BM\d{3}$");
+}
+
 public sealed class Announcement
 {
     public Guid Id { get; set; } = Guid.NewGuid();

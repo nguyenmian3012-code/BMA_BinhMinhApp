@@ -121,7 +121,7 @@ components:
         username: { type: string, minLength: 3, maxLength: 64 }
         password: { type: string, minLength: 10, maxLength: 200 }
         display_name: { type: string, minLength: 1, maxLength: 120 }
-        employee_code: { type: [string, 'null'], maxLength: 64 }
+        employee_code: { type: [string, 'null'], pattern: '^BM[0-9]{3}$' }
     LoginRequest:
       type: object
       required: [username, password]
@@ -150,7 +150,7 @@ components:
       type: object
       required: [employee_code, shift_name, month, monthly_total_minutes, monthly_total_hours, monthly_remaining_minutes, items]
       properties:
-        employee_code: { type: [string, 'null'] }
+        employee_code: { type: [string, 'null'], pattern: '^BM[0-9]{3}$' }
         shift_name: { type: string }
         month: { type: string, pattern: '^\d{4}-\d{2}$' }
         monthly_total_minutes: { type: integer, minimum: 0 }

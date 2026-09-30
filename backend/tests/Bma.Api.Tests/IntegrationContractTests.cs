@@ -31,7 +31,7 @@ public sealed class IntegrationContractTests
     {
         using var payload = JsonDocument.Parse("""
             {
-              "employee_id": "BM-TEST-001",
+              "employee_id": "BM999",
               "evidence_ref": "bmbridge://1605063/events/test-event-001",
               "verification_method": "FACE_TERMINAL",
               "confidence": null

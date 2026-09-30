@@ -36,6 +36,14 @@ class BmaDisplay {
     return '${total ~/ 60} giờ $minutes phút';
   }
 
+  static String compactDurationMinutes(Object? value) {
+    if (value is! num) return '0 giờ';
+    final total = value.toInt().clamp(0, 1000000);
+    final hours = total ~/ 60;
+    final minutes = total % 60;
+    return minutes == 0 ? '$hours giờ' : '$hours giờ $minutes phút';
+  }
+
   static String attendanceStatus(Object? status, Object? reason) => switch (reason) {
     'MISSING_ENTRY' => 'Thiếu giờ vào · tạm tính 50%',
     'MISSING_EXIT' => 'Thiếu giờ ra · tạm tính 50%',

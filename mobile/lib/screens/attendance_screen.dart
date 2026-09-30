@@ -21,37 +21,68 @@ class AttendanceScreen extends StatelessWidget {
             title: Text('Tổng công tháng ${data['month'] ?? '--'}'),
             subtitle: Text(data['shift_name']?.toString() ?? 'Ca làm việc'),
             trailing: Text(
-              BmaDisplay.durationMinutes(data['monthly_total_minutes']),
+              BmaDisplay.compactDurationMinutes(data['monthly_total_minutes']),
               style: Theme.of(context).textTheme.titleMedium,
             ),
-          ),
-        ),
-        const Card(
-          child: ListTile(
-            leading: Icon(Icons.verified_user_outlined),
-            title: Text('Terminal độc lập · tự phân loại'),
-            subtitle: Text('Bridge gửi EMPLOYEE_SCAN; BMA quyết định Entry/Exit theo ca.'),
           ),
         ),
         if (items.isEmpty)
           const Card(child: ListTile(title: Text('Chưa có dữ liệu chấm công.')))
         else
           ...items.map((item) => Card(
-            child: ListTile(
-              leading: Icon(
-                item['status'] == 'NEEDS_REVIEW'
-                    ? Icons.report_problem_outlined
-                    : Icons.access_time,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(
+                      item['status'] == 'NEEDS_REVIEW'
+                          ? Icons.report_problem_outlined
+                          : Icons.access_time,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          BmaDisplay.date(item['work_date']),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${BmaDisplay.time(item['entry_at'])} → '
+                                '${BmaDisplay.time(item['exit_at'])}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              BmaDisplay.compactDurationMinutes(
+                                item['credited_minutes'],
+                              ),
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(BmaDisplay.attendanceStatus(
+                          item['status'],
+                          item['review_reason'],
+                        )),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              title: Text(
-                '${BmaDisplay.date(item['work_date'])} · '
-                '${BmaDisplay.time(item['entry_at'])} → ${BmaDisplay.time(item['exit_at'])}',
-              ),
-              subtitle: Text(BmaDisplay.attendanceStatus(
-                item['status'],
-                item['review_reason'],
-              )),
-              trailing: Text(BmaDisplay.durationMinutes(item['credited_minutes'])),
             ),
           )),
       ];

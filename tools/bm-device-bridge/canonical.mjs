@@ -105,6 +105,9 @@ export async function toCanonicalEvent(event, config) {
   );
   const employeeId = config.employeeMap.get(terminalPersonId);
   if (!employeeId) throw new Error(`PERSON_NOT_MAPPED:${terminalPersonId}`);
+  if (!/^BM[0-9]{3}$/.test(employeeId)) {
+    throw new Error(`EMPLOYEE_CODE_INVALID:${employeeId}`);
+  }
 
   const payload = {
     employee_id: employeeId,
