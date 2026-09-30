@@ -22,7 +22,7 @@ const canonical = await toCanonicalEvent(event, {
   personField: "body.data.personId",
   occurredAtField: "body.data.capturedAt",
   confidenceField: "body.data.confidence",
-  employeeMap: new Map([["1605063-001", "BM-001"]]),
+  employeeMap: new Map([["1605063-001", "BM998"]]),
 });
 
 assert.equal(valueAt({ body: { personId: "P-1" } }, "body.personId"), "P-1");
@@ -31,7 +31,7 @@ assert.equal(canonical.source_system, "FACE_TERMINAL");
 assert.equal(canonical.source_device_id, "1605063");
 assert.equal(canonical.sequence, 9);
 assert.equal(canonical.occurred_at, "2026-09-07T06:59:58.000Z");
-assert.equal(canonical.payload.employee_id, "BM-001");
+assert.equal(canonical.payload.employee_id, "BM998");
 assert.equal(canonical.payload.confidence, 0.98);
 assert.equal(
   canonical.payload_hash,
@@ -47,6 +47,17 @@ await assert.rejects(
     employeeMap: new Map(),
   }),
   /PERSON_NOT_MAPPED/,
+);
+
+await assert.rejects(
+  () => toCanonicalEvent(event, {
+    deviceId: "1605063",
+    personField: "body.data.personId",
+    occurredAtField: "",
+    confidenceField: "",
+    employeeMap: new Map([["1605063-001", "BM0001"]]),
+  }),
+  /EMPLOYEE_CODE_INVALID:BM0001/,
 );
 
 console.log("PASS: canonical attendance payload, UTC, hash và mapping.");

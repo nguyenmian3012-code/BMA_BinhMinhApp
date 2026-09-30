@@ -40,7 +40,7 @@ let childOutput = "";
 const receivedByGateway = [];
 
 writeFileSync(employeeMapPath, JSON.stringify({
-  terminal_person_to_employee: { "TEST-001": "BM-TEST-001" },
+  terminal_person_to_employee: { "TEST-001": "BM999" },
 }));
 
 const gateway = createServer(async (request, response) => {
@@ -122,7 +122,7 @@ try {
   assert.equal(canonical.event_type, "EMPLOYEE_SCAN");
   assert.equal(canonical.source_system, "FACE_TERMINAL");
   assert.equal(canonical.source_device_id, "1605063");
-  assert.equal(canonical.payload.employee_id, "BM-TEST-001");
+  assert.equal(canonical.payload.employee_id, "BM999");
   assert.equal(canonical.payload.verification_method, "FACE_TERMINAL");
   assert.equal(
     canonical.payload_hash,

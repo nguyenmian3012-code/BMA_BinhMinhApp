@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["employee_id", "evidence_ref"],
   "properties": {
-    "employee_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "employee_id": { "type": "string", "pattern": "^BM[0-9]{3}$" },
     "evidence_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
     "verification_method": { "type": ["string", "null"], "maxLength": 64 },
     "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }

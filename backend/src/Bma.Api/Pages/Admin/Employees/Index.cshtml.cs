@@ -28,7 +28,7 @@ public sealed class IndexModel(BmaDbContext db, AuditWriter audit) : PageModel
         fullName = (fullName ?? "").Trim();
         department = Clean(department);
         position = Clean(position);
-        if (!System.Text.RegularExpressions.Regex.IsMatch(code, @"^BM\d{3,6}$") ||
+        if (!EmployeeCodeRules.IsValid(code) ||
             fullName.Length is < 2 or > 120 || department?.Length > 120 || position?.Length > 120)
             return Fail("Mã cần dạng BM001. Họ tên và thông tin phải hợp lệ.");
         if (await db.EmployeeProfiles.AnyAsync(x => x.EmployeeCode.ToUpper() == code, ct))

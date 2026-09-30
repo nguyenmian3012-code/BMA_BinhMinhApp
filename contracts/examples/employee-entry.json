@@ -8,7 +8,7 @@
   "schema_version": "1.0",
   "correlation_id": "shift-20260830-a",
   "payload": {
-    "employee_id": "BM-DEMO-001",
+    "employee_id": "BM999",
     "evidence_ref": "evidence://entry-station-01/000123",
     "verification_method": "INDEPENDENT_STATION",
     "confidence": null
