@@ -18,6 +18,12 @@ void main() {
     expect(BmaDisplay.durationMinutes(null), '0 giờ 00 phút');
   });
 
+  test('attendance duration is compact when minutes are zero', () {
+    expect(BmaDisplay.compactDurationMinutes(240), '4 giờ');
+    expect(BmaDisplay.compactDurationMinutes(245), '4 giờ 5 phút');
+    expect(BmaDisplay.compactDurationMinutes(null), '0 giờ');
+  });
+
   test('missing attendance punch is explained in Vietnamese', () {
     expect(
       BmaDisplay.attendanceStatus('NEEDS_REVIEW', 'MISSING_EXIT'),
