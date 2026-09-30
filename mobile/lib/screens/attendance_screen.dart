@@ -12,9 +12,22 @@ class AttendanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CachedView(
     load: repository.attendance,
-    builder: (context, data) {
-      final items = (data['items'] as List? ?? const []).whereType<Map<String, dynamic>>().toList();
-      return [
+    builder: (context, data) => [AttendanceContent(data: data)],
+  );
+}
+
+class AttendanceContent extends StatelessWidget {
+  const AttendanceContent({required this.data, super.key});
+
+  final Map<String, dynamic> data;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = (data['items'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    return Column(
+      children: [
         Card(
           child: ListTile(
             leading: const Icon(Icons.calendar_month_outlined),
@@ -85,9 +98,9 @@ class AttendanceScreen extends StatelessWidget {
               ),
             ),
           )),
-      ];
-    },
-  );
+      ],
+    );
+  }
 }
 
 class AttendanceStatusBadge extends StatelessWidget {
