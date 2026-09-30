@@ -74,10 +74,10 @@ class AttendanceScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        Text(BmaDisplay.attendanceStatus(
-                          item['status'],
-                          item['review_reason'],
-                        )),
+                        AttendanceStatusBadge(
+                          status: item['status']?.toString(),
+                          reviewReason: item['review_reason']?.toString(),
+                        ),
                       ],
                     ),
                   ),
@@ -88,4 +88,58 @@ class AttendanceScreen extends StatelessWidget {
       ];
     },
   );
+}
+
+class AttendanceStatusBadge extends StatelessWidget {
+  const AttendanceStatusBadge({
+    required this.status,
+    required this.reviewReason,
+    super.key,
+  });
+
+  final String? status;
+  final String? reviewReason;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = BmaDisplay.attendanceStatus(status, reviewReason);
+    if (status != 'NEEDS_REVIEW') return Text(label);
+
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      container: true,
+      label: 'Cần kiểm tra: $label',
+      child: ExcludeSemantics(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.errorContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.report_problem_outlined,
+                  size: 18,
+                  color: colors.onErrorContainer,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: colors.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
