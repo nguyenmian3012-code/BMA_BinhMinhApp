@@ -4,8 +4,9 @@ BMA là ứng dụng nội bộ chính thức của Bình Minh cho Android và i
 Flutter cho mobile và một BMA Core độc lập chạy ASP.NET Core .NET 10 LTS,
 PostgreSQL và Razor Pages Admin.
 
-> Trạng thái: **Engineering Alpha đang triển khai theo Whitepaper V1.0**  
-> Nhánh phát triển hiện tại: `codex/windows-native-runtime-v0-3-3`
+> Trạng thái: **Engineering Alpha đã hợp nhất vào `main`; physical Attendance
+> gate và các gate vận hành vẫn đang mở theo Whitepaper V1.0**
+> Baseline phát triển hiện tại: `main`; thay đổi mới đi qua feature branch và PR.
 > BMA Core: `v0.3.1`; BM Device Bridge mới nhất: `v0.3.2`
 > Múi giờ nghiệp vụ: `Asia/Ho_Chi_Minh`  
 > Package/bundle ID dự kiến: `com.binhminh.bma`
