@@ -1,50 +1,71 @@
-# Các bước Anh cần thao tác thủ công
+# Các bước Minh An cần thực hiện
 
-## Blocker gần nhất
+## Blocker hiện tại (13/09/2026)
 
-1. Trên máy MinhComp, xác nhận thư mục/source thật đang chạy Gateway/ABMT Core.
-2. Không gửi key; chỉ gửi đường dẫn repo/file và output lệnh không chứa secret.
-3. Xác nhận `com.binhminh.bma` và port local `8790`.
-4. Chọn một Samsung Fold 7 hoặc S24 Ultra làm Android pilot.
+Staging PostgreSQL native đã PASS. Lần chạy `1e0df64` dừng tại `sc.exe
+config BMA-Staging`; không coi local/public health là PASS. Chỉ chạy lại sau
+khi CI của commit sửa lệnh `sc.exe` đạt PASS.
 
-## Trước staging
+Chạy trên MinhComp bằng PowerShell **Run as administrator**:
 
-- Tạo database/user PostgreSQL staging và đặt secret trực tiếp trên host.
-- Cấp route regex `^/bmapp-staging(/.*)?$` trong Cloudflare Tunnel, đặt trước
-  route catch-all của `gateway.abmtlab.com`; Cloudflare giữ nguyên path khi
-  chuyển tiếp đến `http://localhost:8791`.
-- Trong `.env.staging`, đặt `BMA_HOST_PORT=8791` và
-  `BMA_PATH_BASE=/bmapp-staging`; production giữ `BMA_HOST_PORT=8790` và
-  `BMA_PATH_BASE=/bmapp`.
-- Khởi động với `--project-name bma-staging`; không dùng cùng Compose project
-  với production và không chạy `docker compose down -v`.
-- Đặt `Gateway__InboundKey` giống nhau ở Gateway và BMA staging.
-- Chạy `infra/scripts/health-check.ps1 -BaseUrl http://localhost:8791
-  -PathBase /bmapp-staging` và gửi lại output không chứa secret.
+```powershell
+Set-Location C:\ABMT\BMA_BinhMinhApp-v032
 
-## Trước Android Alpha
+git status --short --branch
+git fetch origin
+git switch --detach origin/codex/windows-native-runtime-v0-3-3
 
-- Bật Developer options và USB debugging trên một Samsung Fold 7 hoặc S24 Ultra.
-- Cắm đúng một thiết bị, chấp nhận fingerprint máy phát triển và giữ màn hình mở.
-- Chỉ dùng artifact `bma-android-alpha-staging` từ CI xanh của đúng commit cần
-  test. Artifact phải chứa APK arm64, `BUILD_INFO.txt` và `SHA256SUMS.txt`.
-- Chạy `infra/scripts/install-android-alpha.ps1` với đường dẫn ZIP; script tự
-  kiểm checksum, ADB install, package ID và launch.
-- Thực hiện `docs/ANDROID_ALPHA_TEST.md`: login, giữ session, năm trang chính,
-  offline cache, inbox và logout.
-- APK profile từ CI dùng khóa ký tạm thời, chỉ dành cho physical-device Alpha.
-  Kênh pilot bền vững cần khóa Android nội bộ ổn định lưu ngoài Git/chat.
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\Deploy-BMA-Terminal-v0.3.2.ps1 `
+  -BmaEnvPath .\.env.staging `
+  -PackagePath "$env:USERPROFILE\Downloads\bma-native-win-x64.zip"
+```
 
-## Trước iOS/TestFlight
+Nếu role/database staging đã được tạo ở lần trước, mật khẩu `postgres` không
+được hỏi lại. Không gửi mật khẩu vào chat. Docker Desktop không cần chạy.
 
-- Chuẩn bị Mac/Xcode hoặc macOS CI, Apple Developer và App Store Connect.
-- Tạo APNs key trong tài khoản Bình Minh; không gửi key qua chat.
-- Có ít nhất một iPhone thật để test.
+Kết quả bắt buộc:
 
-## Block Production
+```text
+Native PostgreSQL: PASS
+Windows Service: PASS
+Local health: PASS
+Runtime: windows-service
+Database: postgresql-native
+EmployeeScan: True
+```
 
-- Source/contract thật của Entry/Exit.
-- Công thức lương, tăng ca, nghỉ phép, grace và adjustment.
-- Privacy policy, account deletion/revocation và support contact.
-- Công thức recovery + nguồn cân đầu vào/đầu ra cùng basis.
-- Apple/Google verification và danh sách pilot được duyệt.
+Tải artifact `bma-native-win-x64` của đúng CI commit sau khi CI PASS. Nếu
+local health PASS nhưng public 502, kiểm tra Cloudflare route 8791 trước khi
+restart Bridge.
+
+## Sau public health
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\scripts\staging-integration-check.ps1
+```
+
+Script Deploy-BMA-Terminal đã nâng Bridge một lần, không chạy lại. Gửi output
+PASS; không gửi `.env.staging`.
+
+## Android Alpha
+
+1. Bật Developer options.
+2. Bật USB debugging.
+3. Cắm một điện thoại.
+4. Chấp nhận fingerprint.
+5. Tải artifact `bma-android-alpha-staging`.
+6. Chạy `infra/scripts/install-android-alpha.ps1`.
+7. Thực hiện `docs/ANDROID_ALPHA_TEST.md`.
+
+## Chưa chuyển production
+
+Giữ `/bmapp` và port `8790` nguyên trạng. Chỉ chuyển `BMA-Production` sau khi:
+
+- Public staging PASS.
+- Synthetic BMKCS PASS.
+- Synthetic `EMPLOYEE_SCAN` PASS.
+- Profile liên kết đúng.
+- Attendance mobile hiển thị đúng.
+- Backup/restore native PASS.

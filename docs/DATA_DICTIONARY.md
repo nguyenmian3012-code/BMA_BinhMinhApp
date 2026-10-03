@@ -25,6 +25,7 @@ Quy ước: thời gian dùng ISO-8601 UTC trong API/DB; UI đổi sang
 | --- | --- | --- |
 | `MOTOR_STATE_CHANGED` | `motor_id`, `position`, `state`, `heartbeat_at` | MotorNode |
 | `QUALITY_RESULT_PUBLISHED` | `result_id`, `lot_code`, pH/white/moisture/fineness | BMKCS |
+| `EMPLOYEE_SCAN` | `employee_id`, `evidence_ref` | Terminal quét trung tính; BMA quyết định Entry/Exit |
 | `EMPLOYEE_ENTRY` | `employee_id`, `evidence_ref` | Entry/Exit độc lập |
 | `EMPLOYEE_EXIT` | `employee_id`, `evidence_ref` | Entry/Exit độc lập |
 | `PRODUCTION_MASS_RECORDED` | `period_id`, `kind`, `mass_kg`, `basis` | Nguồn cân duyệt |

@@ -4,6 +4,11 @@
     ViewData["Title"] = "Tài khoản";
 }
 <h1>Tài khoản chờ duyệt</h1>
+<p><a asp-page="/Admin/Accounts/Reset">Khôi phục mật khẩu nhân viên</a></p>
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <p class="error">@Model.ErrorMessage</p>
+}
 <section class="card table-wrap">
 <table>
     <thead><tr><th>Tài khoản</th><th>Họ tên</th><th>Mã NV</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead>
@@ -21,4 +26,34 @@
     </tbody>
 </table>
 @if (Model.Items.Count == 0) { <p>Không có tài khoản đang chờ.</p> }
+</section>
+<section class="card table-wrap">
+    <h2>Tài khoản đã duyệt</h2>
+    <p>Chỉ Admin phân quyền. Thay đổi quyền yêu cầu người dùng đăng nhập lại.</p>
+    <table>
+        <thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Mã NV</th><th>Quyền</th><th>Lưu</th></tr></thead>
+        <tbody>
+        @foreach (var item in Model.ActiveAccounts)
+        {
+            <tr>
+                <td>@item.UserName</td><td>@item.DisplayName</td><td>@item.EmployeeCode</td>
+                @if (Bma.Authentication.AuthService.HasRole(item, "Admin"))
+                {
+                    <td>Admin</td><td></td>
+                }
+                else
+                {
+                    var formId = "role-" + item.Id;
+                    <td><select form="@formId" name="role" aria-label="Quyền @item.UserName">
+                        @foreach (var role in new[] { "Employee", "Accounting", "Operations", "Executive", "HR" })
+                        {
+                            <option value="@role" selected="@(item.Roles == role)">@role</option>
+                        }
+                    </select></td>
+                    <td><form id="@formId" method="post" asp-page-handler="Role" asp-route-id="@item.Id"><button>Lưu quyền</button></form></td>
+                }
+            </tr>
+        }
+        </tbody>
+    </table>
 </section>

@@ -7,13 +7,19 @@
 - Payload cũ viết tắt: `id`, `lot`, `ts`, `pd`, `prod`, `op`, `qc`, `cust`,
   `ph`, `w`, `m`, `v`, `x`, `station`.
 - MotorNode ingest hiện tại: `POST /api/motornode/events`.
-- Repo redtigerhead bmapp freeze chưa chứa source Gateway production, vì vậy chưa được phép
+- Repo ABMT freeze chưa chứa source Gateway production, vì vậy chưa được phép
   tuyên bố Gateway outbox đã deploy.
 
 ## Hướng tích hợp chính thức
 
-Gateway tiếp tục ACK source sau khi raw record và integration outbox đã commit
-cùng transaction. Một dispatcher gửi canonical event tới:
+BMKCS v2.3 tạm tiếp tục publish vào endpoint cũ:
+
+`POST https://gateway.abmtlab.com/api/bmkcslab/v1/results`
+
+Gateway chỉ ACK sau khi raw record và integration outbox đã commit cùng
+transaction. Dispatcher dùng
+[`infra/gateway/bmkcs-adapter.mjs`](../infra/gateway/bmkcs-adapter.mjs) để đổi
+payload cũ, rồi gửi canonical event tới:
 
 `POST https://gateway.redtigerhead.com/bmapp/api/v1/integrations/events`
 
@@ -35,6 +41,7 @@ Response `202 accepted` hoặc `200 duplicate` đều là terminal success. `400
 | --- | --- |
 | `id` | envelope `event_id`, payload `result_id` |
 | `ts` | `occurred_at`, payload `measured_at` |
+| `pd` | `payload.production_date` (raw/audit) |
 | `station` | `source_device_id` |
 | `lot` | `payload.lot_code` |
 | `ph` | `payload.ph` |
@@ -42,9 +49,23 @@ Response `202 accepted` hoặc `200 duplicate` đều là terminal success. `400
 | `m` | `payload.moisture` |
 | `v` | `payload.viscosity` |
 | `x` | `payload.extra_value` |
+| `prod` | `payload.product_code` |
+| `op` | `payload.operator_code` |
+| `qc` | `payload.quality_code` |
+| `cust` | `payload.customer_code` |
 
 `fineness` chỉ được set khi BMKCS phát field riêng. Không map `v` hoặc `x` sang
 fineness.
+
+Chạy contract/synthetic adapter test:
+
+```text
+node infra/gateway/bmkcs-adapter-test.mjs
+```
+
+Module mapping đã có trong repo. Source ABMT Gateway production chưa có trong
+repo, nên phần gắn handler/outbox vào endpoint public vẫn cần source đang chạy
+trên MinhComp.
 
 ## MotorNode mapping
 
@@ -83,15 +104,18 @@ vào SQLite trước khi ACK, sau đó gửi canonical event qua HTTPS tới sta
 
 Bridge dùng đúng `X-BMA-Gateway-Key` và `Idempotency-Key`. ID người trên
 Terminal phải được map tường minh sang `employee_code` BMA; không dùng tên hiển
-thị, điện thoại hoặc device ID làm `employee_id`.
+thị, điện thoại hoặc device ID làm `employee_id`. Bridge v0.3 phát
+`EMPLOYEE_SCAN` trung tính để một Terminal phục vụ đồng thời mọi nhân viên.
 
-Thiết bị hiện đặt `Lối vào/Lối ra = Nhập`, vì vậy chỉ phát
-`EMPLOYEE_ENTRY`. `EMPLOYEE_EXIT` chỉ được phát khi operator cấu hình rõ hướng
-`OUT`; BMA không suy diễn hướng từ giờ, vị trí hoặc lượt trước.
+BMA quyết định Entry/Exit theo `employee_id`, ngày làm việc và khung Ca Hành
+Chính: Thứ Hai-Thứ Bảy, `07:00-17:00`, nghỉ không tính công `11:00-13:00`, vào
+sớm tối đa 30 phút và ra muộn tối đa 20 phút. Thiếu một lượt được đối soát thành
+50% ca (`240` phút mặc định) và gắn `MISSING_ENTRY` hoặc `MISSING_EXIT`.
 
 Mỗi canonical event được lưu vào `raw_integration_events`. Outbox projector ghi
-`attendance_events` và ghép `attendance_sessions` trong PostgreSQL. Terminal và
-Bridge không có tài khoản SQL.
+`attendance_events` và ghép một `attendance_sessions` cho mỗi nhân viên/ngày
+trong PostgreSQL. Terminal và Bridge không có tài khoản SQL; BMA API là writer
+duy nhất để giữ validation, idempotency và audit tại cùng biên giao dịch.
 
 Kiểm tra toàn bộ ba lớp dữ liệu trên máy staging:
 

@@ -31,7 +31,7 @@ public sealed class IntegrationContractTests
     {
         using var payload = JsonDocument.Parse("""
             {
-              "employee_id": "BM-TEST-001",
+              "employee_id": "BM999",
               "evidence_ref": "bmbridge://1605063/events/test-event-001",
               "verification_method": "FACE_TERMINAL",
               "confidence": null
@@ -41,6 +41,7 @@ public sealed class IntegrationContractTests
         var hash = IntegrationIngestionService.ComputePayloadHash(payload.RootElement);
 
         Assert.Matches("^[a-f0-9]{64}$", hash);
+        Assert.Contains(CanonicalEventTypes.EmployeeScan, CanonicalEventTypes.Supported);
         Assert.Contains(CanonicalEventTypes.EmployeeEntry, CanonicalEventTypes.Supported);
         Assert.Contains(CanonicalEventTypes.EmployeeExit, CanonicalEventTypes.Supported);
     }

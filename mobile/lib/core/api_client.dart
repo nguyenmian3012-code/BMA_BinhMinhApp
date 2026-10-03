@@ -32,7 +32,7 @@ class ApiClient {
   }) : _client = client ?? http.Client(),
        baseUrl = (baseUrl ?? const String.fromEnvironment(
          'BMA_API_BASE_URL',
-         defaultValue: 'https://gateway.abmtlab.com/bmapp/api/v1',
+         defaultValue: 'https://gateway.redtigerhead.com/bmapp/api/v1',
        )).replaceAll(RegExp(r'/$'), '');
 
   final SessionStore sessionStore;

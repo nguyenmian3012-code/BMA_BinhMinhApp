@@ -41,7 +41,7 @@ public sealed class AuthService(
             string.IsNullOrWhiteSpace(displayName))
             return (false, null);
         var normalized = Normalize(username);
-        var employee = NullIfWhiteSpace(employeeCode);
+        var employee = NullIfWhiteSpace(employeeCode)?.ToUpperInvariant();
         if (normalized.Length is < 3 or > 64 || password.Length is < 10 or > 200 ||
             displayName.Trim().Length > 120 || employee?.Length > 64)
             return (false, null);
@@ -103,6 +103,14 @@ public sealed class AuthService(
     {
         var user = await FindAndVerifyAsync(username, password, ct);
         return user is { Status: AccountStatus.Approved } && HasRole(user, "Admin") ? user : null;
+    }
+
+    public async Task<AppUser?> VerifyPeopleEditorAsync(string username, string password, CancellationToken ct)
+    {
+        var user = await FindAndVerifyAsync(username, password, ct);
+        if (user is not { Status: AccountStatus.Approved }) return null;
+        return new[] { "Admin", "HR", "Accounting", "Operations", "Executive" }
+            .Any(role => HasRole(user, role)) ? user : null;
     }
 
     public async Task<TokenPair?> RefreshAsync(
@@ -168,14 +176,58 @@ public sealed class AuthService(
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task<bool> ChangePasswordAsync(Guid userId, string currentPassword,
+        string newPassword, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword) || newPassword is null ||
+            newPassword.Length is < 10 or > 200 || currentPassword == newPassword)
+            return false;
+        var user = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == userId, ct);
+        if (user is not { Status: AccountStatus.Approved } ||
+            hasher.VerifyHashedPassword(user, user.PasswordHash, currentPassword) == PasswordVerificationResult.Failed)
+            return false;
+
+        user.PasswordHash = hasher.HashPassword(user, newPassword);
+        user.AuthVersion++;
+        var now = DateTimeOffset.UtcNow;
+        var sessions = await db.RefreshSessions
+            .Where(x => x.UserId == userId && x.RevokedAt == null).ToListAsync(ct);
+        foreach (var session in sessions)
+        {
+            session.RevokedAt = now;
+            session.RevocationReason = "PASSWORD_CHANGED";
+        }
+        audit.Add("PASSWORD_CHANGED", "USER", userId.ToString(), userId);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public async Task<bool> SetApprovalAsync(Guid targetId, Guid actorId, bool approved, CancellationToken ct)
     {
         var user = await db.AppUsers.SingleOrDefaultAsync(x => x.Id == targetId, ct);
         if (user is null) return false;
+
+        EmployeeProfile? profile = null;
+        if (approved && !string.IsNullOrWhiteSpace(user.EmployeeCode))
+        {
+            profile = await db.EmployeeProfiles.SingleOrDefaultAsync(
+                x => x.EmployeeCode == user.EmployeeCode, ct);
+            if (profile is null || profile.UserId is not null && profile.UserId != user.Id)
+                return false;
+            var otherProfile = await db.EmployeeProfiles.AsNoTracking().AnyAsync(
+                x => x.UserId == user.Id && x.Id != profile.Id, ct);
+            if (otherProfile) return false;
+            profile.UserId = user.Id;
+            profile.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
         var before = user.Status;
         user.Status = approved ? AccountStatus.Approved : AccountStatus.Rejected;
         user.ApprovedAt = approved ? DateTimeOffset.UtcNow : null;
         user.ApprovedBy = actorId;
+        if (profile is not null)
+            audit.Add("ACCOUNT_EMPLOYEE_LINKED", "EMPLOYEE_PROFILE", profile.Id.ToString(), actorId,
+                after: new { profile.EmployeeCode, UserId = user.Id });
         audit.Add(approved ? "ACCOUNT_APPROVED" : "ACCOUNT_REJECTED", "USER",
             user.Id.ToString(), actorId, new { Status = before }, new { user.Status });
         await db.SaveChangesAsync(ct);
@@ -207,7 +259,8 @@ public sealed class AuthService(
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.UniqueName, user.UserName),
-            new("display_name", user.DisplayName)
+            new("display_name", user.DisplayName),
+            new("auth_version", user.AuthVersion.ToString(System.Globalization.CultureInfo.InvariantCulture))
         };
         foreach (var role in Roles(user)) claims.Add(new("role", role));
 

@@ -7,7 +7,10 @@ using Microsoft.Extensions.Options;
 
 namespace Bma.Integration;
 
-public sealed class CanonicalEventProjector(BmaDbContext db, IOptions<PlantOptions> options)
+public sealed class CanonicalEventProjector(
+    BmaDbContext db,
+    IOptions<PlantOptions> options,
+    AttendancePolicy attendance)
 {
     private readonly PlantOptions plant = options.Value;
 
@@ -22,6 +25,9 @@ public sealed class CanonicalEventProjector(BmaDbContext db, IOptions<PlantOptio
                 break;
             case CanonicalEventTypes.QualityResultPublished:
                 ProjectQuality(raw, payload);
+                break;
+            case CanonicalEventTypes.EmployeeScan:
+                await ProjectAttendanceScanAsync(raw, payload, ct);
                 break;
             case CanonicalEventTypes.EmployeeEntry:
             case CanonicalEventTypes.EmployeeExit:
@@ -121,7 +127,144 @@ public sealed class CanonicalEventProjector(BmaDbContext db, IOptions<PlantOptio
         var employee = RequiredString(payload, "employee_id");
         var kind = raw.EventType == CanonicalEventTypes.EmployeeEntry
             ? AttendanceKind.Entry : AttendanceKind.Exit;
-        db.AttendanceEvents.Add(new AttendanceEvent
+        var workDate = attendance.Classify(raw.OccurredAt).WorkDate;
+        AddAttendanceEvent(raw, payload, employee, kind);
+
+        var session = await db.AttendanceSessions.SingleOrDefaultAsync(
+            x => x.EmployeeId == employee && x.WorkDate == workDate, ct);
+        if (kind == AttendanceKind.Entry)
+        {
+            if (session is null)
+                db.AttendanceSessions.Add(new AttendanceSession
+                {
+                    EmployeeId = employee,
+                    EntryAt = raw.OccurredAt,
+                    EntryEventId = raw.EventId,
+                    WorkDate = workDate,
+                    ShiftCode = attendance.Options.ShiftCode,
+                    Status = AttendanceSessionStatus.Provisional
+                });
+            else
+            {
+                session.Status = AttendanceSessionStatus.NeedsReview;
+                session.ReviewReason = "DUPLICATE_ENTRY_WITHOUT_EXIT";
+                AddAudit("ATTENDANCE_NEEDS_REVIEW", raw,
+                    new { employee, session.Id, session.ReviewReason });
+            }
+            return;
+        }
+
+        if (session is null)
+        {
+            db.AttendanceSessions.Add(new AttendanceSession
+            {
+                EmployeeId = employee,
+                ExitAt = raw.OccurredAt,
+                ExitEventId = raw.EventId,
+                WorkDate = workDate,
+                ShiftCode = attendance.Options.ShiftCode,
+                CreditedMinutes = attendance.MissingPunchMinutes,
+                Status = AttendanceSessionStatus.NeedsReview,
+                ReviewReason = "EXIT_WITHOUT_ENTRY"
+            });
+            AddAudit("ATTENDANCE_NEEDS_REVIEW", raw, new { employee, reason = "EXIT_WITHOUT_ENTRY" });
+            return;
+        }
+
+        session.ExitAt = raw.OccurredAt;
+        session.ExitEventId = raw.EventId;
+        if (session.EntryAt is not null && raw.OccurredAt >= session.EntryAt)
+        {
+            session.Status = AttendanceSessionStatus.Confirmed;
+            session.ReviewReason = null;
+            session.CreditedMinutes = attendance.CalculateCreditedMinutes(
+                workDate, session.EntryAt.Value, raw.OccurredAt);
+        }
+        else
+        {
+            session.Status = AttendanceSessionStatus.NeedsReview;
+            session.ReviewReason = "EXIT_BEFORE_ENTRY";
+            session.CreditedMinutes = attendance.MissingPunchMinutes;
+            AddAudit("ATTENDANCE_NEEDS_REVIEW", raw,
+                new { employee, session.Id, session.ReviewReason });
+        }
+    }
+
+    private async Task ProjectAttendanceScanAsync(RawIntegrationEvent raw, JsonElement payload,
+        CancellationToken ct)
+    {
+        var employee = RequiredString(payload, "employee_id");
+        var decision = attendance.Classify(raw.OccurredAt);
+        if (decision.Window is AttendanceScanWindow.Break or
+            AttendanceScanWindow.OutsideShift or AttendanceScanWindow.NonWorkingDay)
+        {
+            AddAudit("ATTENDANCE_SCAN_IGNORED", raw,
+                new { employee, decision.WorkDate, window = decision.Window.ToString() });
+            return;
+        }
+
+        var session = await db.AttendanceSessions.SingleOrDefaultAsync(
+            x => x.EmployeeId == employee && x.WorkDate == decision.WorkDate, ct);
+        if (decision.Window == AttendanceScanWindow.Entry)
+        {
+            if (session is not null)
+            {
+                AddAudit("ATTENDANCE_SCAN_DUPLICATE", raw,
+                    new { employee, decision.WorkDate, resolved_kind = "ENTRY", session.Id });
+                return;
+            }
+
+            AddAttendanceEvent(raw, payload, employee, AttendanceKind.Entry);
+            db.AttendanceSessions.Add(new AttendanceSession
+            {
+                EmployeeId = employee,
+                EntryAt = raw.OccurredAt,
+                EntryEventId = raw.EventId,
+                WorkDate = decision.WorkDate,
+                ShiftCode = attendance.Options.ShiftCode,
+                Status = AttendanceSessionStatus.Provisional
+            });
+            return;
+        }
+
+        if (session is null)
+        {
+            AddAttendanceEvent(raw, payload, employee, AttendanceKind.Exit);
+            db.AttendanceSessions.Add(new AttendanceSession
+            {
+                EmployeeId = employee,
+                ExitAt = raw.OccurredAt,
+                ExitEventId = raw.EventId,
+                WorkDate = decision.WorkDate,
+                ShiftCode = attendance.Options.ShiftCode,
+                CreditedMinutes = attendance.MissingPunchMinutes,
+                Status = AttendanceSessionStatus.NeedsReview,
+                ReviewReason = "MISSING_ENTRY"
+            });
+            AddAudit("ATTENDANCE_NEEDS_REVIEW", raw,
+                new { employee, decision.WorkDate, reason = "MISSING_ENTRY" });
+            return;
+        }
+
+        if (session.EntryAt is null || session.ExitAt is not null ||
+            session.Status != AttendanceSessionStatus.Provisional)
+        {
+            AddAudit("ATTENDANCE_SCAN_DUPLICATE", raw,
+                new { employee, decision.WorkDate, resolved_kind = "EXIT", session.Id });
+            return;
+        }
+
+        AddAttendanceEvent(raw, payload, employee, AttendanceKind.Exit);
+        session.ExitAt = raw.OccurredAt;
+        session.ExitEventId = raw.EventId;
+        session.Status = AttendanceSessionStatus.Confirmed;
+        session.ReviewReason = null;
+        session.CreditedMinutes = attendance.CalculateCreditedMinutes(
+            decision.WorkDate, session.EntryAt.Value, raw.OccurredAt);
+    }
+
+    private void AddAttendanceEvent(RawIntegrationEvent raw, JsonElement payload,
+        string employee, AttendanceKind kind) => db.AttendanceEvents.Add(new AttendanceEvent
         {
             SourceEventId = raw.EventId,
             EmployeeId = employee,
@@ -132,54 +275,6 @@ public sealed class CanonicalEventProjector(BmaDbContext db, IOptions<PlantOptio
             Sequence = raw.Sequence,
             EvidenceRef = RequiredString(payload, "evidence_ref")
         });
-
-        var open = await db.AttendanceSessions
-            .Where(x => x.EmployeeId == employee && x.ExitAt == null)
-            .OrderByDescending(x => x.EntryAt).FirstOrDefaultAsync(ct);
-        if (kind == AttendanceKind.Entry)
-        {
-            if (open is null)
-                db.AttendanceSessions.Add(new AttendanceSession
-                {
-                    EmployeeId = employee,
-                    EntryAt = raw.OccurredAt,
-                    EntryEventId = raw.EventId,
-                    Status = AttendanceSessionStatus.Provisional
-                });
-            else
-            {
-                open.Status = AttendanceSessionStatus.NeedsReview;
-                open.ReviewReason = "DUPLICATE_ENTRY_WITHOUT_EXIT";
-                AddAudit("ATTENDANCE_NEEDS_REVIEW", raw, new { employee, open.Id, open.ReviewReason });
-            }
-            return;
-        }
-
-        if (open is null)
-        {
-            db.AttendanceSessions.Add(new AttendanceSession
-            {
-                EmployeeId = employee,
-                ExitAt = raw.OccurredAt,
-                ExitEventId = raw.EventId,
-                Status = AttendanceSessionStatus.NeedsReview,
-                ReviewReason = "EXIT_WITHOUT_ENTRY"
-            });
-            AddAudit("ATTENDANCE_NEEDS_REVIEW", raw, new { employee, reason = "EXIT_WITHOUT_ENTRY" });
-            return;
-        }
-
-        open.ExitAt = raw.OccurredAt;
-        open.ExitEventId = raw.EventId;
-        if (open.EntryAt is not null && raw.OccurredAt >= open.EntryAt)
-            open.Status = AttendanceSessionStatus.Confirmed;
-        else
-        {
-            open.Status = AttendanceSessionStatus.NeedsReview;
-            open.ReviewReason = "EXIT_BEFORE_ENTRY";
-            AddAudit("ATTENDANCE_NEEDS_REVIEW", raw, new { employee, open.Id, open.ReviewReason });
-        }
-    }
 
     private void ProjectMass(RawIntegrationEvent raw, JsonElement payload)
     {

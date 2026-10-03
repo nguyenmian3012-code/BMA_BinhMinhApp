@@ -5,13 +5,15 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 
 ## Preconditions
 
-- Branch: `feature/engineering-alpha-v1`.
+- Branch: `codex/windows-native-runtime-v0-3-3`.
+- `BMA-Staging` local/public health must PASS; the previous CI result alone is
+  not an on-host integration result.
 - Canonical staging integration must eventually show both
   `PostgreSQL scalar preflight: PASS` and final `Result : PASS`.
 - Android artifact build metadata must contain:
   - package: `com.binhminh.bma`
   - ABI: `arm64-v8a`
-  - API: `https://gateway.abmtlab.com/bmapp-staging/api/v1`
+  - API: `https://gateway.redtigerhead.com/bmapp-staging/api/v1`
 - Use synthetic Alpha accounts only. Do not put passwords or keys in chat.
 - Connect exactly one Android pilot device with USB debugging authorized.
 
@@ -19,13 +21,14 @@ Samsung Fold 7 or S24 Ultra. It does not authorize production or Store release.
 
 1. Download the latest `bma-android-alpha-staging` artifact from the PR's
    successful BMA CI run. Keep the ZIP intact.
-2. Pull the matching branch on MinhComp.
+2. Fetch the matching branch on MinhComp; do not overwrite local edits.
 3. Run:
 
 ```powershell
-Set-Location "C:\ABMT\BMA_BinhMinhApp"
-git switch feature/engineering-alpha-v1
-git pull --ff-only
+Set-Location "C:\ABMT\BMA_BinhMinhApp-v032"
+git status --short
+git fetch origin
+git switch --detach origin/codex/windows-native-runtime-v0-3-3
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\infra\scripts\install-android-alpha.ps1 `
@@ -64,6 +67,8 @@ AndroidInstall       : PASS/FAIL
 LoginApproved        : PASS/FAIL
 SessionPersistence   : PASS/FAIL
 FiveMainScreens      : PASS/FAIL
+AttendanceSynthetic : PASS/FAIL/NOT_RUN
+AttendancePhysical  : DEFERRED/PASS/FAIL
 OfflineCache         : PASS/FAIL
 Logout               : PASS/FAIL
 BlockingIssue        : NONE/<short description>
@@ -72,3 +77,21 @@ AndroidAlphaGate     : PASS/FAIL
 
 A failed row keeps the Android gate at **NO-GO** but does not require repeating
 Docker, Cloudflare, database migration or the staging infrastructure smoke test.
+
+## Home-safe pass without the physical Terminal
+
+The Android and backend gates can proceed remotely with synthetic data. Complete
+AA-01 through AA-05 and AA-07 through AA-09. For AA-06, use an approved account
+already linked to a synthetic `employee_code`, inject `EMPLOYEE_SCAN` through the
+staging integration API, and verify that attendance remains scoped to that user.
+
+The backend CI smoke test creates that profile/account pair, approves it through
+the Admin flow, checks `/profile/me`, posts an Entry-window and Exit-window
+`EMPLOYEE_SCAN`, then requires a confirmed 480-minute session from
+`/attendance/me`. It also posts one synthetic `QUALITY_RESULT_PUBLISHED` event to
+verify BMA's BMKCS projection path. This proves BMA ingest/projection only; it
+does not prove the BMKCS desktop Gateway adapter is deployed.
+
+Keep `AttendancePhysical` at `DEFERRED` until Terminal `1605063`, Bridge mapping,
+PostgreSQL projection and BMA mobile display can be checked together at the
+factory. A synthetic pass never replaces that physical Entry/Exit gate.

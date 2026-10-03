@@ -1,5 +1,9 @@
 # Roadmap BMA
 
+Trạng thái từng tính năng, bằng chứng CI và gate trên MinhComp:
+[`FEATURE_MAP.md`](FEATURE_MAP.md). Mốc ngày trong whitepaper là kế hoạch Alpha,
+không phải bằng chứng hoàn thành.
+
 ## Sprint 7 ngày — Engineering Alpha
 
 | Ngày | Kết quả | Gate |

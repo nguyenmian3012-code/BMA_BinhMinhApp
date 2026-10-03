@@ -1,0 +1,41 @@
+@page "/admin/employees"
+@model Bma.Pages.Admin.Employees.IndexModel
+@{
+    ViewData["Title"] = "Nhân sự";
+}
+<h1>Nhân sự</h1>
+<p>Mã và họ tên cố định sau khi tạo. Thay đổi bộ phận, chức vụ, ngày vào làm và trạng thái tại đây.</p>
+@if (!string.IsNullOrEmpty(Model.ErrorMessage)) { <p class="error" role="alert">@Model.ErrorMessage</p> }
+@if (!string.IsNullOrEmpty(Model.Notice)) { <p role="status">@Model.Notice</p> }
+<section class="card">
+    <h2>Thêm nhân viên</h2>
+    <form method="post" asp-page-handler="Create" class="form-grid">
+        <label>Mã NV<input name="code" required maxlength="8" pattern="BM[0-9]{3,6}" placeholder="BM072" /></label>
+        <label>Họ tên<input name="fullName" required maxlength="120" /></label>
+        <label>Bộ phận<input name="department" maxlength="120" /></label>
+        <label>Chức vụ<input name="position" maxlength="120" /></label>
+        <label>Ngày vào làm<input name="hiredOn" type="date" /></label>
+        <div><button class="primary" type="submit">Thêm nhân viên</button></div>
+    </form>
+</section>
+<section class="card table-wrap">
+    <h2>Danh sách nhân viên</h2>
+    <table>
+        <thead><tr><th>Mã NV</th><th>Họ tên</th><th>Bộ phận</th><th>Chức vụ</th><th>Ngày vào làm</th><th>Đang làm</th><th>Lưu</th></tr></thead>
+        <tbody>
+        @foreach (var item in Model.Items)
+        {
+            var formId = "employee-" + item.Id;
+            <tr>
+                <td>@item.EmployeeCode</td><td>@item.FullName</td>
+                <td><input form="@formId" name="department" value="@item.Department" maxlength="120" aria-label="Bộ phận @item.EmployeeCode" /></td>
+                <td><input form="@formId" name="position" value="@item.Position" maxlength="120" aria-label="Chức vụ @item.EmployeeCode" /></td>
+                <td><input form="@formId" name="hiredOn" type="date" value="@(item.HiredOn?.ToString("yyyy-MM-dd"))" aria-label="Ngày vào làm @item.EmployeeCode" /></td>
+                <td><input form="@formId" name="isActive" type="checkbox" value="true" checked="@item.IsActive" aria-label="Đang làm @item.EmployeeCode" /></td>
+                <td><form id="@formId" method="post" asp-page-handler="Update" asp-route-id="@item.Id"><button type="submit">Lưu</button></form></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    @if (Model.Items.Count == 0) { <p>Chưa có hồ sơ.</p> }
+</section>

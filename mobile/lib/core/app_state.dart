@@ -92,6 +92,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> logoutAfterPasswordChange() async {
+    await api.sessionStore.clearRememberedCredentials();
+    await logout();
+  }
+
   static String _message(String code) => switch (code) {
     'ACCOUNT_PENDING_APPROVAL' => 'Tài khoản đang chờ Admin phê duyệt.',
     'ACCOUNT_REJECTED' => 'Tài khoản đã bị từ chối.',

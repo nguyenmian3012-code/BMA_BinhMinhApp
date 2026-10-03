@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -10,6 +11,8 @@ using Bma.Modules;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +20,8 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddJsonConsole();
+builder.Services.AddWindowsService(options =>
+    options.ServiceName = builder.Configuration["Service:Name"] ?? "BMA Core");
 var pathBase = builder.Configuration["App:PathBase"] ?? "/bmapp";
 if (pathBase.Length < 2 || !pathBase.StartsWith('/') || pathBase.EndsWith('/'))
     throw new InvalidOperationException("App:PathBase must be a non-root path that starts with '/' and does not end with '/'.");
@@ -28,6 +33,21 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.Section));
 builder.Services.Configure<GatewayOptions>(builder.Configuration.GetSection(GatewayOptions.Section));
 builder.Services.Configure<PlantOptions>(builder.Configuration.GetSection(PlantOptions.Section));
+builder.Services.Configure<AttendanceOptions>(builder.Configuration.GetSection(AttendanceOptions.Section));
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
+
+var dataProtectionPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionPath))
+{
+    Directory.CreateDirectory(dataProtectionPath);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath));
+}
 
 var connection = builder.Configuration.GetConnectionString("Bma");
 if (string.IsNullOrWhiteSpace(connection))
@@ -69,6 +89,14 @@ builder.Services.AddAuthentication(options =>
         NameClaimType = System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.UniqueName,
         RoleClaimType = "role"
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            if (!await AccountIsCurrent(context.HttpContext.RequestServices, context.Principal!))
+                context.Fail("Account inactive or roles changed");
+        }
+    };
 })
 .AddCookie(BmaAuthSchemes.Cookie, options =>
 {
@@ -85,10 +113,16 @@ builder.Services.AddAuthentication(options =>
         : CookieSecurePolicy.Always;
     options.SlidingExpiration = true;
     options.ExpireTimeSpan = TimeSpan.FromHours(12);
+    options.Events.OnValidatePrincipal = async context =>
+    {
+        if (!await AccountIsCurrent(context.HttpContext.RequestServices, context.Principal!))
+            context.RejectPrincipal();
+    };
 });
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Admin", policy => policy.RequireRole("Admin"))
-    .AddPolicy("HrOrAdmin", policy => policy.RequireRole("HR", "Admin"));
+    .AddPolicy("HrOrAdmin", policy => policy.RequireRole("HR", "Admin"))
+    .AddPolicy("PeopleEditor", policy => policy.RequireRole("Admin", "HR", "Accounting", "Operations", "Executive"));
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
@@ -137,14 +171,17 @@ builder.Services.AddScoped<AuditWriter>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IntegrationIngestionService>();
 builder.Services.AddScoped<CanonicalEventProjector>();
+builder.Services.AddSingleton<AttendancePolicy>();
 builder.Services.AddScoped<DashboardService>();
 builder.Services.AddScoped<RecoveryService>();
 builder.Services.AddHostedService<AdminBootstrapService>();
 builder.Services.AddHostedService<OutboxProjectionWorker>();
 builder.Services.AddHostedService<GatewayReconciliationWorker>();
+builder.Services.AddHostedService<AttendanceReconciliationWorker>();
 
 var app = builder.Build();
 app.UseExceptionHandler();
+app.UseForwardedHeaders();
 app.UseResponseCompression();
 app.Use(async (context, next) =>
 {
@@ -182,6 +219,14 @@ if (builder.Configuration.GetValue("Database:MigrateOnStartup", true))
 }
 
 app.MapHealthChecks("/health").AllowAnonymous();
+app.MapGet("/health/details", () => Results.Ok(new
+{
+    ok = true,
+    version = "0.3.1",
+    runtime = builder.Configuration["Runtime:Mode"] ?? "process",
+    database = builder.Configuration["Database:Deployment"] ?? "postgresql",
+    supported_event_types = CanonicalEventTypes.Supported.Order()
+})).AllowAnonymous();
 app.MapBmaAuth();
 app.MapBmaIntegration();
 app.MapBmaReadApi();
@@ -189,6 +234,23 @@ app.MapRazorPages();
 app.MapGet("/", () => Results.Redirect($"{pathBase}/admin")).AllowAnonymous();
 
 await app.RunAsync();
+
+static async Task<bool> AccountIsCurrent(IServiceProvider services, ClaimsPrincipal principal)
+{
+    var rawId = principal.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub) ??
+                principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (!Guid.TryParse(rawId, out var id)) return false;
+    var db = services.GetRequiredService<BmaDbContext>();
+    var user = await db.AppUsers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
+    if (user is not { Status: Bma.Domain.AccountStatus.Approved }) return false;
+    if (!int.TryParse(principal.FindFirstValue("auth_version") ?? "0", out var authVersion) ||
+        authVersion != user.AuthVersion) return false;
+    if (!AuthService.Roles(user).OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+        .SequenceEqual(principal.FindAll("role").Concat(principal.FindAll(ClaimTypes.Role))
+            .Select(x => x.Value).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)) return false;
+    return !await db.EmployeeProfiles.AsNoTracking().AnyAsync(x => x.UserId == id && !x.IsActive);
+}
 
 public partial class Program
 {

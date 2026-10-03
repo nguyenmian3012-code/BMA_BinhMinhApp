@@ -11,7 +11,8 @@ nhưng vẫn tách ranh giới module bằng namespace, contract và ownership d
 flowchart TD
   MN[MotorNode] --> GO[Gateway Outbox]
   QC[BMKCS Lab] --> GO
-  EE[Entry/Exit độc lập] --> BI[BMA Integration API]
+  FT[Face Terminal] --> BR[BM Device Bridge]
+  BR --> BI[BMA Integration API]
   GO --> BI
   BI --> RE[(Raw Events)]
   BI --> OB[(BMA Outbox)]
@@ -25,6 +26,15 @@ flowchart TD
 Raw event là bất biến. Mobile và Admin chỉ đọc projection hoặc tạo event điều
 chỉnh; không update trực tiếp lịch sử gốc.
 
+## Runtime MinhComp
+
+- PostgreSQL 17 chạy native Windows.
+- Production dùng database `binhminh_data`.
+- Staging dùng database `binhminh_data_staging`.
+- BMA Core chạy bằng `BMA-Production` hoặc `BMA-Staging` Windows Service.
+- Service chỉ bind loopback; Cloudflare Tunnel cung cấp HTTPS public.
+- Docker không thuộc runtime MinhComp.
+
 ## Module boundaries
 
 | Module | Trách nhiệm |
@@ -33,7 +43,7 @@ chỉnh; không update trực tiếp lịch sử gốc.
 | Operations | Motor state, trạng thái nhà máy, runtime và lịch chạy |
 | Quality | BMKCS published result, freshness, threshold và history |
 | Recovery | Input/output mass cùng kỳ và công thức có version |
-| Attendance | Entry/Exit, ghép session, anomaly, adjustment, payroll approval |
+| Attendance | Phân luồng scan theo người/ca, ghép session, anomaly, adjustment, payroll approval |
 | People | Hồ sơ, vai trò hệ thống và chức danh/trách nhiệm có hiệu lực |
 | Announcements | Đối tượng nhận, inbox, read state và push registration |
 | Integration | Canonical ingest, idempotency, outbox và reconciliation cursor |

@@ -4,7 +4,10 @@ BMA là ứng dụng nội bộ chính thức của Bình Minh cho Android và i
 Flutter cho mobile và một BMA Core độc lập chạy ASP.NET Core .NET 10 LTS,
 PostgreSQL và Razor Pages Admin.
 
-> Trạng thái: **Engineering Alpha đang triển khai theo Whitepaper V1.0**  
+> Trạng thái: **Engineering Alpha đã hợp nhất vào `main`; physical Attendance
+> gate và các gate vận hành vẫn đang mở theo Whitepaper V1.0**
+> Baseline phát triển hiện tại: `main`; thay đổi mới đi qua feature branch và PR.
+> BMA Core: `v0.3.1`; BM Device Bridge mới nhất: `v0.3.2`
 > Múi giờ nghiệp vụ: `Asia/Ho_Chi_Minh`  
 > Package/bundle ID dự kiến: `com.binhminh.bma`
 
@@ -12,7 +15,7 @@ PostgreSQL và Razor Pages Admin.
 
 1. Trạng thái hoạt động nhà máy, tổng giờ chạy và lịch chạy tương lai.
 2. Chất lượng thành phẩm và tỷ lệ thu hồi có nguồn dữ liệu rõ ràng.
-3. Chấm công cá nhân từ hệ thống Entry/Exit độc lập.
+3. Chấm công cá nhân từ Terminal độc lập qua `EMPLOYEE_SCAN`.
 4. Vai trò, trách nhiệm, nghĩa vụ, quyền lợi và trọng trách của nhân viên.
 5. Thông báo cho toàn công ty, bộ phận, vai trò hoặc cá nhân.
 
@@ -34,10 +37,60 @@ PostgreSQL và Razor Pages Admin.
 /mobile       Flutter application source
 /backend      BMA Core API, workers, Admin và PostgreSQL migrations
 /contracts    OpenAPI, JSON Schema và payload mẫu
-/infra        Docker, Cloudflare, Gateway và script vận hành
+/infra        Windows Service, Cloudflare, Gateway và script vận hành
+/tools        BM Device Bridge và công cụ biên tại nhà máy
 /docs         Whitepaper, ADR, data dictionary, roadmap và runbook
 /assets       Tài sản nhận diện chính thức dùng lại cho app và website
 ```
+
+## Một lệnh triển khai Terminal staging
+
+Giải nén `BMA-Terminal-Stack-v0.3.2`, giữ nguyên `.env.staging`, `data` và
+`employee-map.json`, rồi chạy:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\Deploy-BMA-Terminal-v0.3.2.ps1
+```
+
+Script publish BMA thành Windows Service, kết nối PostgreSQL 17 native, kiểm tra
+local/public, nâng cấp Bridge rồi requeue callback. Docker Desktop không còn
+tham gia runtime trên MinhComp.
+
+## Quy tắc chấm công `EMPLOYEE_SCAN`
+
+Terminal chỉ xác nhận **ai** và **lúc nào**. Bridge lưu callback gốc vào SQLite,
+map mã người sang `employee_code`, chống lặp trong 120 giây rồi gửi một canonical
+event trung tính `EMPLOYEE_SCAN`. Bridge không gửi và không tự đoán `IN/OUT`.
+Các event `EMPLOYEE_ENTRY/EMPLOYEE_EXIT` vẫn được BMA nhận để tương thích nguồn
+cũ, nhưng không thuộc luồng Terminal/Bridge v0.3.2.
+
+BMA phân loại riêng cho từng nhân viên và ngày làm việc theo giờ Việt Nam:
+
+| Giờ nhận diện | Xử lý mặc định |
+| --- | --- |
+| `06:30-10:59` | Entry |
+| `11:00-12:59` | Bỏ qua trong giờ nghỉ |
+| `13:00-17:20` | Exit |
+| Ngoài khung trên hoặc Chủ Nhật | Bỏ qua và ghi audit |
+
+Lượt Entry mở session tạm. Lượt Exit hợp lệ đóng session và tính phút thực tế,
+không tính nghỉ trưa `11:00-13:00`, tối đa 480 phút. Thiếu Entry hoặc Exit được
+đánh dấu `NeedsReview` và tạm ghi 240 phút; dữ liệu này chưa được tự động dùng
+cho bảng lương. Mỗi nhân viên có session độc lập nên lượt quét của người khác
+không thay đổi hướng chấm công.
+
+### Khả năng mở rộng ca cá nhân
+
+BMA hiện chỉ dùng một **Ca Hành Chính** toàn cục từ cấu hình. Đây là giới
+hạn hiện tại, không phải thiết kế cuối. `attendance_sessions.shift_code` đã lưu
+mã ca, nên có thể mở rộng mà không đổi event `EMPLOYEE_SCAN`: thêm danh mục ca,
+gán ca cho nhân viên theo khoảng hiệu lực, rồi resolve ca trước khi phân loại
+Entry/Exit. Ca đêm và ngoại lệ theo ngày cần được kiểm thử riêng trước khi dùng
+cho bảng lương.
+
+Việc duyệt tài khoản có `employee_code` giờ chỉ thành công khi tìm thấy đúng hồ
+sơ nhân viên chưa liên kết. Migration đi kèm tự gắn lại các tài khoản đã duyệt
+với hồ sơ có cùng mã nhân viên.
 
 ## Endpoint dự kiến
 
@@ -48,27 +101,34 @@ PostgreSQL và Razor Pages Admin.
 | `/bmapp/admin/*` | Razor Pages Admin |
 | `/bmapp/health` | Liveness/health |
 
+URL kiểm tra hiện tại:
+
+- Staging: `https://gateway.redtigerhead.com/bmapp-staging/health/details`
+- Production: `https://gateway.redtigerhead.com/bmapp/health/details`
+
 Các route hiện hữu được giữ nguyên:
 
 - `/api/motornode/*` và dashboard `/motornode`
 - `/api/bmkcslab/*` và dashboard `/bmkcs`
 
-## Chạy backend local
+Tình trạng publish BMKCS hiện tại được ghi tại
+[`docs/BMKCS_PUBLISH_AUDIT.md`](docs/BMKCS_PUBLISH_AUDIT.md).
 
-Yêu cầu: .NET 10 SDK, Docker Desktop và PostgreSQL/Docker Compose.
+## Chạy backend native
+
+Yêu cầu: PostgreSQL 17 native. Có thể dùng package `bma-native-win-x64` từ CI;
+nếu không có package, máy triển khai cần .NET 10 SDK.
 
 ```powershell
-Copy-Item .env.example .env
-# Điền secret chỉ trong .env local; không commit file này.
-docker compose --env-file .env up --build
-Invoke-RestMethod http://localhost:8790/bmapp/health
+Copy-Item .env.example .env.staging
+# Điền secret trong .env.staging; không commit file này.
+powershell.exe -ExecutionPolicy Bypass `
+  -File .\infra\scripts\restore-staging-origin.ps1
 ```
 
-`BMA_PATH_BASE` phải khớp route Cloudflare. Dùng `/bmapp` cho production và
-`/bmapp-staging` cho staging; backend, Admin và static assets dùng chung prefix
-này thay vì hard-code đường dẫn. `BMA_HOST_PORT` mặc định là `8790`; staging
-dùng `8791` và phải chạy bằng một Compose project riêng để database/volume
-không trùng production.
+Staging chạy service `BMA-Staging`, port `8791`, database native
+`binhminh_data_staging`. Production dùng service `BMA-Production`, port `8790`,
+database `binhminh_data`. Hai môi trường không dùng chung database hoặc secret.
 
 ## Chạy Flutter local
 
@@ -104,16 +164,18 @@ Artifact GitHub chỉ là tiện ích tạm thời và không chặn CI nếu qu
 - [Triển khai và rollback](docs/DEPLOYMENT.md)
 - [Nhật ký phân tích lỗi build](docs/BUILD_TROUBLESHOOTING.md)
 - [Các bước thủ công của chủ hệ thống](docs/OWNER_ACTIONS.md)
+- [Kế hoạch ABMT Remote v1.1](docs/ABMT_REMOTE_V1_1_PLAN.md)
 - [Roadmap](docs/ROADMAP.md)
 - [BM7 official app icon](assets/brand/binh-minh/app-icon/README.md)
 
 ## Definition of Done cho Engineering Alpha
 
-- Backend build/test, migration và Docker image vượt CI.
+- Backend build/test, migration và Windows native package vượt CI.
 - Flutter analyze/test và Android debug APK vượt CI.
 - Auth hỗ trợ đăng ký chờ duyệt, phiên dài hạn có refresh-token rotation.
 - Canonical event ingest, outbox, projection, audit và reconciliation có test.
 - Năm luồng mobile đọc được API/fixture và thể hiện trạng thái dữ liệu cũ.
 - Không có secret trong Git; staging/production có database và secret riêng.
 
-Copyright © 2026 Bình Minh. Repository riêng, không cấp license phân phối công khai.
+Copyright © 2026 Bình Minh. Mã nguồn được công khai để review; chưa cấp license
+sử dụng hoặc phân phối.

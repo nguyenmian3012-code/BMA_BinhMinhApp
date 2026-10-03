@@ -11,7 +11,7 @@ SELECT
     processing_state,
     processing_error
 FROM raw_integration_events
-WHERE source_system = 'ENTRY_EXIT'
+WHERE source_system IN ('FACE_TERMINAL', 'ENTRY_EXIT')
   AND source_device_id = :'device_id'
 ORDER BY received_at DESC
 LIMIT 20;
@@ -25,7 +25,7 @@ SELECT
     sequence,
     evidence_ref
 FROM attendance_events
-WHERE source_system = 'ENTRY_EXIT'
+WHERE source_system IN ('FACE_TERMINAL', 'ENTRY_EXIT')
   AND source_device_id = :'device_id'
 ORDER BY occurred_at DESC
 LIMIT 20;
@@ -33,8 +33,11 @@ LIMIT 20;
 \echo '3/4 Attendance sessions built from Entry/Exit'
 SELECT
     employee_id,
+    work_date,
     entry_at,
     exit_at,
+    shift_code,
+    credited_minutes,
     status,
     review_reason,
     entry_event_id,
@@ -56,7 +59,7 @@ SELECT
     event_type,
     processing_error
 FROM raw_integration_events
-WHERE source_system = 'ENTRY_EXIT'
+WHERE source_system IN ('FACE_TERMINAL', 'ENTRY_EXIT')
   AND source_device_id = :'device_id'
   AND processing_state = 'Failed'
 ORDER BY received_at DESC

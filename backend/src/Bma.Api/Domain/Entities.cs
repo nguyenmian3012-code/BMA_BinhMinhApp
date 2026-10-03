@@ -19,6 +19,7 @@ public sealed class AppUser
     public required string PasswordHash { get; set; }
     public AccountStatus Status { get; set; } = AccountStatus.Pending;
     public string Roles { get; set; } = "Employee";
+    public int AuthVersion { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ApprovedAt { get; set; }
     public Guid? ApprovedBy { get; set; }
@@ -178,6 +179,9 @@ public sealed class AttendanceSession
     public DateTimeOffset? ExitAt { get; set; }
     public string? EntryEventId { get; set; }
     public string? ExitEventId { get; set; }
+    public DateOnly? WorkDate { get; set; }
+    public string? ShiftCode { get; set; }
+    public int CreditedMinutes { get; set; }
     public AttendanceSessionStatus Status { get; set; }
     public string? ReviewReason { get; set; }
     public Guid? ApprovedBy { get; set; }
@@ -193,6 +197,8 @@ public sealed class EmployeeProfile
     public required string FullName { get; set; }
     public string? Department { get; set; }
     public string? Position { get; set; }
+    public DateOnly? HiredOn { get; set; }
+    public bool IsActive { get; set; } = true;
     public string? ManagerEmployeeCode { get; set; }
     public string Responsibilities { get; set; } = "";
     public string Obligations { get; set; } = "";
@@ -201,6 +207,12 @@ public sealed class EmployeeProfile
     public DateOnly EffectiveFrom { get; set; }
     public int Version { get; set; } = 1;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public static class EmployeeCodeRules
+{
+    public static bool IsValid(string value) =>
+        System.Text.RegularExpressions.Regex.IsMatch(value, @"^BM\d{3}$");
 }
 
 public sealed class Announcement
