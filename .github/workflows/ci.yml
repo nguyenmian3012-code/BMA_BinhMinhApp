@@ -98,6 +98,9 @@ jobs:
           if ($source -match '"password=",\s*""') {
             throw 'Virtual service accounts must not receive a password argument.'
           }
+          if ($source -notmatch 'MigrateOnStartup\s*=\s*\$targetDefaults\.Migrate\s*-or\s*\$ApplyMigrations\.IsPresent') {
+            throw 'Production migrations must require the explicit ApplyMigrations switch.'
+          }
           $name = "BMA-CI-$env:GITHUB_RUN_ID"
           $binary = Join-Path $env:WINDIR 'System32\whoami.exe'
           New-Service -Name $name -BinaryPathName ('"{0}"' -f $binary) -StartupType Manual | Out-Null

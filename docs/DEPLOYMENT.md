@@ -95,20 +95,21 @@ tạm bị xóa sau kiểm tra. Database nguồn không bị thay đổi.
 
 ## Production
 
-Production chỉ chuyển sang `BMA-Production` sau khi staging, Bridge,
-`EMPLOYEE_SCAN`, Profile, Attendance và BMKCS đều PASS. Script không tự tạo hoặc
-thay đổi database production.
+Production được deploy trực tiếp sau khi backup/restore PASS. Migration chỉ chạy
+khi truyền cờ `-ApplyMigrations`; script không tự tạo database production.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\infra\scripts\deploy-native-bma-service.ps1 `
   -Target Production `
   -EnvFile .env.production `
+  -ApplyMigrations `
   -PackagePath C:\Path\bma-native-win-x64.zip
 ```
 
-Trước lệnh trên: backup `binhminh_data`; xác nhận port `8790` trống; xác nhận
-Cloudflare `/bmapp` trỏ `http://localhost:8790`.
+Trước lệnh trên: chạy `verify-backup-restore.ps1` với `.env.production`; xác nhận
+port `8790` trống; xác nhận Cloudflare `/bmapp` trỏ `http://localhost:8790`.
+Không truyền `-ApplyMigrations` khi release không chứa migration mới.
 
 ## Rollback
 
