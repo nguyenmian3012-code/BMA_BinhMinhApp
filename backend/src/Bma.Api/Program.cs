@@ -122,6 +122,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Admin", policy => policy.RequireRole("Admin"))
     .AddPolicy("HrOrAdmin", policy => policy.RequireRole("HR", "Admin"))
+    .AddPolicy("AttendanceReviewer", policy =>
+        policy.RequireRole("Admin", "HR", "Operations", "Executive", "Manager"))
     .AddPolicy("PeopleEditor", policy => policy.RequireRole("Admin", "HR", "Accounting", "Operations", "Executive"));
 
 builder.Services.AddProblemDetails();

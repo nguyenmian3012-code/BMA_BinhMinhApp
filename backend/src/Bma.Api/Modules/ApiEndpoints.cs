@@ -15,6 +15,8 @@ public sealed record CreateAttendanceCorrectionRequest(
     DateTimeOffset? ProposedAt,
     string? EvidenceRef);
 
+public sealed record AttendanceCorrectionDecisionRequest(string? Decision, string? Comment);
+
 public static class ApiEndpoints
 {
     public static IEndpointRouteBuilder MapBmaReadApi(this IEndpointRouteBuilder endpoints)
@@ -165,6 +167,134 @@ public static class ApiEndpoints
             });
         });
 
+        group.MapGet("/attendance/corrections/pending", async (ClaimsPrincipal principal,
+            BmaDbContext db, CancellationToken ct) =>
+        {
+            var reviewer = await db.AppUsers.AsNoTracking().SingleAsync(x => x.Id == UserId(principal), ct);
+            var roles = AuthService.Roles(reviewer);
+            var canReviewAll = roles.Contains("Admin", StringComparer.OrdinalIgnoreCase) ||
+                               roles.Contains("HR", StringComparer.OrdinalIgnoreCase);
+            var query = from correction in db.AttendanceCorrectionRequests.AsNoTracking()
+                        join employee in db.EmployeeProfiles.AsNoTracking()
+                            on correction.EmployeeId equals employee.EmployeeCode
+                        where correction.Status == AttendanceCorrectionStatus.Submitted &&
+                              (canReviewAll || employee.ManagerEmployeeCode == reviewer.EmployeeCode)
+                        orderby correction.RequestedAt
+                        select new
+                        {
+                            correction.Id,
+                            correction.AttendanceSessionId,
+                            correction.EmployeeId,
+                            employee.FullName,
+                            correction.CorrectionType,
+                            correction.Reason,
+                            correction.ProposedAt,
+                            correction.EvidenceRef,
+                            correction.RequestedAt
+                        };
+            var pending = await query.Take(100).ToListAsync(ct);
+            return Results.Ok(new
+            {
+                items = pending.Select(x => new
+                {
+                    x.Id,
+                    x.AttendanceSessionId,
+                    x.EmployeeId,
+                    x.FullName,
+                    correction_type = CorrectionTypeCode(x.CorrectionType),
+                    x.Reason,
+                    x.ProposedAt,
+                    x.EvidenceRef,
+                    status = "SUBMITTED",
+                    x.RequestedAt
+                })
+            });
+        }).RequireAuthorization("AttendanceReviewer");
+
+        group.MapPost("/attendance/corrections/{id:guid}/decision", async (Guid id,
+            AttendanceCorrectionDecisionRequest request, ClaimsPrincipal principal,
+            BmaDbContext db, AttendancePolicy attendance, AuditWriter audit, CancellationToken ct) =>
+        {
+            var error = ValidateCorrectionDecision(request, out var approve);
+            if (error is not null) return Results.BadRequest(new { error });
+
+            var reviewerId = UserId(principal);
+            var reviewer = await db.AppUsers.AsNoTracking().SingleAsync(x => x.Id == reviewerId, ct);
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var correction = await db.AttendanceCorrectionRequests
+                .FromSqlInterpolated($"SELECT * FROM attendance_correction_requests WHERE id = {id} FOR UPDATE")
+                .SingleOrDefaultAsync(ct);
+            if (correction is null) return Results.NotFound(new { error = "CORRECTION_NOT_FOUND" });
+            if (correction.Status != AttendanceCorrectionStatus.Submitted)
+                return Results.Conflict(new { error = "CORRECTION_ALREADY_DECIDED" });
+
+            var target = await db.EmployeeProfiles.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.EmployeeCode == correction.EmployeeId, ct);
+            if (target is null || !CanReviewAttendanceCorrection(
+                    AuthService.Roles(reviewer), reviewer.EmployeeCode, target.ManagerEmployeeCode))
+                return Results.Forbid();
+
+            var session = await db.AttendanceSessions
+                .FromSqlInterpolated($"SELECT * FROM attendance_sessions WHERE id = {correction.AttendanceSessionId} FOR UPDATE")
+                .SingleAsync(ct);
+            var before = new
+            {
+                correction_status = correction.Status.ToString().ToUpperInvariant(),
+                session.EntryAt,
+                session.ExitAt,
+                session.CreditedMinutes,
+                session_status = session.Status.ToString().ToUpperInvariant(),
+                session.ReviewReason
+            };
+
+            if (approve)
+            {
+                ApplyApprovedCorrection(correction, session, attendance);
+                if (session.EntryAt is not null && session.ExitAt is not null &&
+                    session.ExitAt <= session.EntryAt)
+                    return Results.Conflict(new { error = "CORRECTION_TIME_ORDER_INVALID" });
+                correction.Status = AttendanceCorrectionStatus.Approved;
+            }
+            else
+            {
+                correction.Status = AttendanceCorrectionStatus.Rejected;
+            }
+            correction.ReviewedBy = reviewerId;
+            correction.ReviewedAt = DateTimeOffset.UtcNow;
+            correction.ReviewComment = request.Comment!.Trim();
+
+            var action = approve ? "ATTENDANCE_CORRECTION_APPROVED" : "ATTENDANCE_CORRECTION_REJECTED";
+            audit.Add(action, "ATTENDANCE_CORRECTION", correction.Id.ToString(), reviewerId,
+                before: before, after: new
+                {
+                    correction_status = correction.Status.ToString().ToUpperInvariant(),
+                    reason = correction.ReviewComment,
+                    session.EntryAt,
+                    session.ExitAt,
+                    session.CreditedMinutes,
+                    session_status = session.Status.ToString().ToUpperInvariant(),
+                    session.ReviewReason
+            });
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return Results.Ok(new
+            {
+                correction.Id,
+                status = correction.Status.ToString().ToUpperInvariant(),
+                correction.ReviewedAt,
+                correction.ReviewComment,
+                attendance_session = new
+                {
+                    session.Id,
+                    session.EntryAt,
+                    session.ExitAt,
+                    session.CreditedMinutes,
+                    status = session.Status.ToString().ToUpperInvariant(),
+                    session.ReviewReason
+                }
+            });
+        }).RequireAuthorization("AttendanceReviewer");
+
         group.MapGet("/profile/me", async (ClaimsPrincipal principal, BmaDbContext db,
             CancellationToken ct) =>
         {
@@ -266,6 +396,56 @@ public static class ApiEndpoints
         if (request.EvidenceRef is { } evidence && evidence.Trim().Length > 500)
             return "EVIDENCE_REF_TOO_LONG";
         return null;
+    }
+
+    public static string? ValidateCorrectionDecision(
+        AttendanceCorrectionDecisionRequest request,
+        out bool approve)
+    {
+        approve = string.Equals(request.Decision?.Trim(), "APPROVE", StringComparison.OrdinalIgnoreCase);
+        if (!approve && !string.Equals(request.Decision?.Trim(), "REJECT", StringComparison.OrdinalIgnoreCase))
+            return "CORRECTION_DECISION_INVALID";
+        if (string.IsNullOrWhiteSpace(request.Comment) || request.Comment.Trim().Length < 10)
+            return "CORRECTION_COMMENT_TOO_SHORT";
+        if (request.Comment.Trim().Length > 500) return "CORRECTION_COMMENT_TOO_LONG";
+        return null;
+    }
+
+    public static bool CanReviewAttendanceCorrection(
+        IEnumerable<string> roles,
+        string? reviewerEmployeeCode,
+        string? managerEmployeeCode)
+    {
+        var set = roles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (set.Contains("Admin") || set.Contains("HR")) return true;
+        return (set.Contains("Operations") || set.Contains("Executive") || set.Contains("Manager")) &&
+               !string.IsNullOrWhiteSpace(reviewerEmployeeCode) &&
+               string.Equals(reviewerEmployeeCode, managerEmployeeCode, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static void ApplyApprovedCorrection(
+        AttendanceCorrectionRequest correction,
+        AttendanceSession session,
+        AttendancePolicy attendance)
+    {
+        if (correction.CorrectionType is AttendanceCorrectionType.MissingEntry or AttendanceCorrectionType.WrongEntry)
+            session.EntryAt = correction.ProposedAt;
+        else
+            session.ExitAt = correction.ProposedAt;
+
+        if (session.EntryAt is not null && session.ExitAt is not null && session.WorkDate is not null)
+        {
+            session.CreditedMinutes = attendance.CalculateCreditedMinutes(
+                session.WorkDate.Value, session.EntryAt.Value, session.ExitAt.Value);
+            session.Status = AttendanceSessionStatus.Confirmed;
+            session.ReviewReason = null;
+        }
+        else
+        {
+            session.CreditedMinutes = attendance.MissingPunchMinutes;
+            session.Status = AttendanceSessionStatus.NeedsReview;
+            session.ReviewReason = session.EntryAt is null ? "MISSING_ENTRY" : "MISSING_EXIT";
+        }
     }
 
     private static bool TryCorrectionType(string? value, out AttendanceCorrectionType type)
