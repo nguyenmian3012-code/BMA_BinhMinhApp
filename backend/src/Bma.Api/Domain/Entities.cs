@@ -5,6 +5,8 @@ public enum IntegrationProcessingState { Pending, Projected, Failed }
 public enum PlantState { Unknown, Starting, Running, Draining, Stopped }
 public enum AttendanceKind { Entry, Exit }
 public enum AttendanceSessionStatus { Provisional, Confirmed, NeedsReview, Approved }
+public enum AttendanceCorrectionStatus { Submitted, Approved, Rejected, Cancelled }
+public enum AttendanceCorrectionType { MissingEntry, MissingExit, WrongEntry, WrongExit }
 public enum AnnouncementAudience { Company, Department, Role, Person }
 public enum ProductionMassKind { CassavaInput, StarchOutput }
 public enum MassBasis { Wet, Dry, AsWeighed }
@@ -187,6 +189,23 @@ public sealed class AttendanceSession
     public Guid? ApprovedBy { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class AttendanceCorrectionRequest
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid AttendanceSessionId { get; set; }
+    public required string EmployeeId { get; set; }
+    public AttendanceCorrectionType CorrectionType { get; set; }
+    public required string Reason { get; set; }
+    public DateTimeOffset ProposedAt { get; set; }
+    public string? EvidenceRef { get; set; }
+    public AttendanceCorrectionStatus Status { get; set; } = AttendanceCorrectionStatus.Submitted;
+    public Guid RequestedBy { get; set; }
+    public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
+    public Guid? ReviewedBy { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
+    public string? ReviewComment { get; set; }
 }
 
 public sealed class EmployeeProfile

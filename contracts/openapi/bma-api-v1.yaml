@@ -72,6 +72,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AttendanceSummary' }
+  /attendance/corrections:
+    post:
+      summary: Submit an attendance correction for the authenticated employee
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAttendanceCorrection' }
+      responses:
+        '201': { description: Correction submitted }
+        '400': { description: Type, reason or proposed time invalid }
+        '404': { description: Attendance session not found for employee }
+        '409': { description: Employee not linked or duplicate pending request }
   /profile/me:
     get:
       summary: Read the authenticated employee profile
@@ -173,3 +187,14 @@ components:
         status: { type: string, enum: [PROVISIONAL, CONFIRMED, NEEDS_REVIEW, APPROVED] }
         review_reason: { type: [string, 'null'] }
         payroll_approved: { type: boolean }
+    CreateAttendanceCorrection:
+      type: object
+      required: [attendance_session_id, correction_type, reason, proposed_at]
+      properties:
+        attendance_session_id: { type: string, format: uuid }
+        correction_type:
+          type: string
+          enum: [MISSING_ENTRY, MISSING_EXIT, WRONG_ENTRY, WRONG_EXIT]
+        reason: { type: string, minLength: 10, maxLength: 500 }
+        proposed_at: { type: string, format: date-time }
+        evidence_ref: { type: [string, 'null'], maxLength: 500 }
