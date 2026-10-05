@@ -8,6 +8,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bma.Modules;
 
+public sealed record CreateAttendanceCorrectionRequest(
+    Guid AttendanceSessionId,
+    string? CorrectionType,
+    string? Reason,
+    DateTimeOffset? ProposedAt,
+    string? EvidenceRef);
+
 public static class ApiEndpoints
 {
     public static IEndpointRouteBuilder MapBmaReadApi(this IEndpointRouteBuilder endpoints)
@@ -97,6 +104,67 @@ public static class ApiEndpoints
             });
         });
 
+        group.MapPost("/attendance/corrections", async (CreateAttendanceCorrectionRequest request,
+            ClaimsPrincipal principal, BmaDbContext db, AuditWriter audit, CancellationToken ct) =>
+        {
+            var error = ValidateCorrectionRequest(request, out var correctionType);
+            if (error is not null) return Results.BadRequest(new { error });
+
+            var userId = UserId(principal);
+            var employeeCode = await db.AppUsers.AsNoTracking().Where(x => x.Id == userId)
+                .Select(x => x.EmployeeCode).SingleAsync(ct);
+            if (string.IsNullOrWhiteSpace(employeeCode))
+                return Results.Conflict(new { error = "EMPLOYEE_PROFILE_NOT_LINKED" });
+
+            var session = await db.AttendanceSessions.AsNoTracking().SingleOrDefaultAsync(
+                x => x.Id == request.AttendanceSessionId && x.EmployeeId == employeeCode, ct);
+            if (session is null) return Results.NotFound(new { error = "ATTENDANCE_SESSION_NOT_FOUND" });
+
+            var duplicate = await db.AttendanceCorrectionRequests.AsNoTracking().AnyAsync(
+                x => x.AttendanceSessionId == session.Id &&
+                     x.CorrectionType == correctionType &&
+                     x.Status == AttendanceCorrectionStatus.Submitted, ct);
+            if (duplicate) return Results.Conflict(new { error = "CORRECTION_ALREADY_SUBMITTED" });
+
+            var correction = new AttendanceCorrectionRequest
+            {
+                AttendanceSessionId = session.Id,
+                EmployeeId = employeeCode,
+                CorrectionType = correctionType,
+                Reason = request.Reason!.Trim(),
+                ProposedAt = request.ProposedAt!.Value,
+                EvidenceRef = string.IsNullOrWhiteSpace(request.EvidenceRef)
+                    ? null
+                    : request.EvidenceRef.Trim(),
+                RequestedBy = userId
+            };
+            db.AttendanceCorrectionRequests.Add(correction);
+            audit.Add("ATTENDANCE_CORRECTION_SUBMITTED", "ATTENDANCE_CORRECTION",
+                correction.Id.ToString(), userId, after: new
+                {
+                    correction.AttendanceSessionId,
+                    correction.EmployeeId,
+                    correction_type = CorrectionTypeCode(correction.CorrectionType),
+                    correction.ProposedAt,
+                    correction.Reason,
+                    status = "SUBMITTED"
+                });
+            await db.SaveChangesAsync(ct);
+
+            return Results.Created($"/api/v1/attendance/corrections/{correction.Id}", new
+            {
+                correction.Id,
+                correction.AttendanceSessionId,
+                correction.EmployeeId,
+                correction_type = CorrectionTypeCode(correction.CorrectionType),
+                correction.ProposedAt,
+                correction.Reason,
+                correction.EvidenceRef,
+                status = correction.Status.ToString().ToUpperInvariant(),
+                correction.RequestedAt
+            });
+        });
+
         group.MapGet("/profile/me", async (ClaimsPrincipal principal, BmaDbContext db,
             CancellationToken ct) =>
         {
@@ -182,6 +250,46 @@ public static class ApiEndpoints
     public static DateTimeOffset? AnnouncementReadAt(
         IReadOnlyDictionary<Guid, DateTimeOffset> reads, Guid announcementId) =>
         reads.TryGetValue(announcementId, out var readAt) ? readAt : null;
+
+    public static string? ValidateCorrectionRequest(
+        CreateAttendanceCorrectionRequest request,
+        out AttendanceCorrectionType correctionType)
+    {
+        correctionType = default;
+        if (request.AttendanceSessionId == Guid.Empty) return "ATTENDANCE_SESSION_REQUIRED";
+        if (!TryCorrectionType(request.CorrectionType, out correctionType))
+            return "CORRECTION_TYPE_INVALID";
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 10)
+            return "CORRECTION_REASON_TOO_SHORT";
+        if (request.Reason.Trim().Length > 500) return "CORRECTION_REASON_TOO_LONG";
+        if (request.ProposedAt is null) return "PROPOSED_TIME_REQUIRED";
+        if (request.EvidenceRef is { } evidence && evidence.Trim().Length > 500)
+            return "EVIDENCE_REF_TOO_LONG";
+        return null;
+    }
+
+    private static bool TryCorrectionType(string? value, out AttendanceCorrectionType type)
+    {
+        type = value?.Trim().ToUpperInvariant() switch
+        {
+            "MISSING_ENTRY" => AttendanceCorrectionType.MissingEntry,
+            "MISSING_EXIT" => AttendanceCorrectionType.MissingExit,
+            "WRONG_ENTRY" => AttendanceCorrectionType.WrongEntry,
+            "WRONG_EXIT" => AttendanceCorrectionType.WrongExit,
+            _ => default
+        };
+        return value?.Trim().ToUpperInvariant() is
+            "MISSING_ENTRY" or "MISSING_EXIT" or "WRONG_ENTRY" or "WRONG_EXIT";
+    }
+
+    private static string CorrectionTypeCode(AttendanceCorrectionType type) => type switch
+    {
+        AttendanceCorrectionType.MissingEntry => "MISSING_ENTRY",
+        AttendanceCorrectionType.MissingExit => "MISSING_EXIT",
+        AttendanceCorrectionType.WrongEntry => "WRONG_ENTRY",
+        AttendanceCorrectionType.WrongExit => "WRONG_EXIT",
+        _ => throw new ArgumentOutOfRangeException(nameof(type))
+    };
 
     private static Guid UserId(ClaimsPrincipal principal) =>
         Guid.Parse(principal.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub) ??

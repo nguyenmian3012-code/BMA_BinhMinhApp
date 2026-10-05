@@ -277,6 +277,58 @@ jobs:
           printf '%s' "$attendance" | grep --quiet '"status":"CONFIRMED"'
           printf '%s' "$attendance" | grep --quiet '"credited_minutes":480'
 
+          attendance_session_id=$(printf '%s' "$attendance" | \
+            sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+          test -n "$attendance_session_id"
+          invalid_correction_status=$(curl --silent --output /tmp/invalid-correction.json \
+            --write-out '%{http_code}' --request POST \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer $employee_token" \
+            --data "{\"attendance_session_id\":\"$attendance_session_id\",\"correction_type\":\"OTHER\",\"reason\":\"This reason has enough detail.\",\"proposed_at\":\"$entry_at\"}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/attendance/corrections)
+          test "$invalid_correction_status" = "400"
+          grep --quiet 'CORRECTION_TYPE_INVALID' /tmp/invalid-correction.json
+
+          short_reason_status=$(curl --silent --output /tmp/short-correction.json \
+            --write-out '%{http_code}' --request POST \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer $employee_token" \
+            --data "{\"attendance_session_id\":\"$attendance_session_id\",\"correction_type\":\"WRONG_ENTRY\",\"reason\":\"short\",\"proposed_at\":\"$entry_at\"}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/attendance/corrections)
+          test "$short_reason_status" = "400"
+          grep --quiet 'CORRECTION_REASON_TOO_SHORT' /tmp/short-correction.json
+
+          correction=$(curl --fail --silent --request POST \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer $employee_token" \
+            --data "{\"attendance_session_id\":\"$attendance_session_id\",\"correction_type\":\"WRONG_ENTRY\",\"reason\":\"Terminal recorded the wrong entry time.\",\"proposed_at\":\"$entry_at\"}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/attendance/corrections)
+          printf '%s' "$correction" | grep --quiet '"status":"SUBMITTED"'
+          printf '%s' "$correction" | grep --quiet '"correction_type":"WRONG_ENTRY"'
+
+          duplicate_correction_status=$(curl --silent --output /tmp/duplicate-correction.json \
+            --write-out '%{http_code}' --request POST \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer $employee_token" \
+            --data "{\"attendance_session_id\":\"$attendance_session_id\",\"correction_type\":\"WRONG_ENTRY\",\"reason\":\"Terminal recorded the wrong entry time.\",\"proposed_at\":\"$entry_at\"}" \
+            http://127.0.0.1:8790/bmapp-ci/api/v1/attendance/corrections)
+          test "$duplicate_correction_status" = "409"
+          grep --quiet 'CORRECTION_ALREADY_SUBMITTED' /tmp/duplicate-correction.json
+
+          audit_count=$(PGPASSWORD=bma_ci_only psql --host 127.0.0.1 --username bma_ci \
+            --dbname bma_ci --tuples-only --no-align --command \
+            "SELECT count(*) FROM audit_entries WHERE action = 'ATTENDANCE_CORRECTION_SUBMITTED';")
+          test "$audit_count" = "1"
+          rollback_table=$(PGPASSWORD=bma_ci_only psql --host 127.0.0.1 --username bma_ci \
+            --dbname bma_ci --quiet --tuples-only --no-align <<'SQL'
+          BEGIN;
+          DROP TABLE IF EXISTS attendance_correction_requests;
+          ROLLBACK;
+          SELECT to_regclass('public.attendance_correction_requests');
+          SQL
+          )
+          test "$rollback_table" = "attendance_correction_requests"
+
           occurred_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           quality_payload="{\"result_id\":\"CI-RESULT-001\",\"lot_code\":\"CI-LOT-001\",\"measured_at\":\"$occurred_at\",\"ph\":5.8,\"whiteness\":93.4,\"moisture\":12.4,\"fineness\":null,\"fineness_unit\":null,\"viscosity\":null,\"viscosity_unit\":null,\"extra_value\":null,\"product_code\":\"BO\",\"operator_code\":\"CI\",\"quality_code\":\"D\",\"customer_code\":\"BM\"}"
           quality_hash=$(printf '%s' "$quality_payload" | sha256sum | cut -d' ' -f1)

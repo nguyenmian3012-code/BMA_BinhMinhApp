@@ -18,6 +18,7 @@ public sealed class BmaDbContext(DbContextOptions<BmaDbContext> options) : DbCon
     public DbSet<ProductionMassReading> ProductionMassReadings => Set<ProductionMassReading>();
     public DbSet<AttendanceEvent> AttendanceEvents => Set<AttendanceEvent>();
     public DbSet<AttendanceSession> AttendanceSessions => Set<AttendanceSession>();
+    public DbSet<AttendanceCorrectionRequest> AttendanceCorrectionRequests => Set<AttendanceCorrectionRequest>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRead> AnnouncementReads => Set<AnnouncementRead>();
@@ -150,6 +151,20 @@ public sealed class BmaDbContext(DbContextOptions<BmaDbContext> options) : DbCon
             e.Property(x => x.WorkDate).HasColumnType("date");
             e.Property(x => x.ShiftCode).HasMaxLength(32);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        });
+
+        model.Entity<AttendanceCorrectionRequest>(e =>
+        {
+            e.ToTable("attendance_correction_requests");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.EmployeeId, x.RequestedAt });
+            e.HasIndex(x => new { x.AttendanceSessionId, x.CorrectionType })
+                .IsUnique().HasFilter("status = 'Submitted'");
+            e.Property(x => x.CorrectionType).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.EvidenceRef).HasMaxLength(500);
+            e.Property(x => x.ReviewComment).HasMaxLength(500);
         });
 
         model.Entity<EmployeeProfile>(e =>
