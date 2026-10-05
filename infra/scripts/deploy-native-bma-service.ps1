@@ -5,6 +5,7 @@ param(
     [string]$InstallRoot = "C:\ABMT\BMA-Services",
     [string]$PackagePath = "",
     [string]$PostgresBin = "C:\Program Files\PostgreSQL\17\bin",
+    [switch]$ApplyMigrations,
     [int]$TimeoutSeconds = 120
 )
 
@@ -328,7 +329,7 @@ $config = [ordered]@{
     App = @{ PathBase = $configuredPathBase }
     ConnectionStrings = @{ Bma = $connectionString }
     Database = @{
-        MigrateOnStartup = $targetDefaults.Migrate
+        MigrateOnStartup = $targetDefaults.Migrate -or $ApplyMigrations.IsPresent
         Deployment = "postgresql-native"
     }
     Runtime = @{ Mode = "windows-service" }
