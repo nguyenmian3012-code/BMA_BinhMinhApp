@@ -30,4 +30,11 @@ void main() {
       'Thiếu giờ ra · tạm tính 50%',
     );
   });
+
+  test('attendance presence uses employee-facing labels', () {
+    expect(BmaDisplay.attendancePresence('INSHIFT'), 'Đang trong ca');
+    expect(BmaDisplay.attendancePresence('ABSENTUNEXCUSED'), 'Vắng không phép');
+    expect(BmaDisplay.attendancePresence('ABSENTEXCUSED'), 'Vắng có phép');
+    expect(BmaDisplay.attendancePresence('OFFSHIFT'), 'Ngoài ca');
+  });
 }

@@ -44,6 +44,13 @@ class BmaDisplay {
     return minutes == 0 ? '$hours giờ' : '$hours giờ $minutes phút';
   }
 
+  static String attendancePresence(Object? value) => switch (value) {
+    'INSHIFT' => 'Đang trong ca',
+    'ABSENTUNEXCUSED' => 'Vắng không phép',
+    'ABSENTEXCUSED' => 'Vắng có phép',
+    _ => 'Ngoài ca',
+  };
+
   static String attendanceStatus(Object? status, Object? reason) => switch (reason) {
     'MISSING_ENTRY' => 'Thiếu giờ vào · tạm tính 50%',
     'MISSING_EXIT' => 'Thiếu giờ ra · tạm tính 50%',

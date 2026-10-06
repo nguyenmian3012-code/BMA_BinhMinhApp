@@ -12,6 +12,7 @@ class AttendanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => CachedView(
     load: repository.attendance,
+    refreshInterval: const Duration(seconds: 30),
     builder: (context, data) => [AttendanceContent(data: data)],
   );
 }
@@ -28,6 +29,15 @@ class AttendanceContent extends StatelessWidget {
         .toList();
     return Column(
       children: [
+        Card(
+          child: ListTile(
+            leading: AttendancePresenceDot(
+              status: data['presence_status']?.toString(),
+            ),
+            title: Text(BmaDisplay.attendancePresence(data['presence_status'])),
+            subtitle: const Text('Trạng thái hiện tại'),
+          ),
+        ),
         Card(
           child: ListTile(
             leading: const Icon(Icons.calendar_month_outlined),
@@ -91,6 +101,10 @@ class AttendanceContent extends StatelessWidget {
                           status: item['status']?.toString(),
                           reviewReason: item['review_reason']?.toString(),
                         ),
+                        if ((item['late_minutes'] as num? ?? 0) > 0) ...[
+                          const SizedBox(height: 4),
+                          Text('Đi trễ: ${item['late_duration'] ?? '00:00'}'),
+                        ],
                       ],
                     ),
                   ),
@@ -99,6 +113,29 @@ class AttendanceContent extends StatelessWidget {
             ),
           )),
       ],
+    );
+  }
+}
+
+class AttendancePresenceDot extends StatelessWidget {
+  const AttendancePresenceDot({required this.status, super.key});
+
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      'INSHIFT' => Colors.green,
+      'ABSENTUNEXCUSED' => Colors.red,
+      'ABSENTEXCUSED' => Colors.amber,
+      _ => Colors.grey,
+    };
+    final label = BmaDisplay.attendancePresence(status);
+    return Semantics(
+      label: label,
+      child: ExcludeSemantics(
+        child: Icon(Icons.circle, color: color, size: 16),
+      ),
     );
   }
 }

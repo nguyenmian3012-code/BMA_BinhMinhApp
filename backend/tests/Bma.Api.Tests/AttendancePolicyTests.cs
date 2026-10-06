@@ -43,4 +43,42 @@ public sealed class AttendancePolicyTests
 
         Assert.Equal(420, credited);
     }
+
+    [Fact]
+    public void Late_entry_is_recorded_in_hh_mm()
+    {
+        var late = policy.CalculateLateMinutes(
+            new DateOnly(2026, 10, 6),
+            DateTimeOffset.Parse("2026-10-06T00:45:00Z"));
+
+        Assert.Equal(45, late);
+        Assert.Equal("00:45", AttendancePolicy.Duration(late));
+    }
+
+    [Fact]
+    public void First_scan_is_entry_even_when_late_and_second_scan_is_exit()
+    {
+        var entry = DateTimeOffset.Parse("2026-10-06T00:45:00Z");
+
+        Assert.Equal(AttendanceKind.Entry, policy.ResolveScan(entry, null, null));
+        Assert.Null(policy.ResolveScan(entry.AddMinutes(2), entry, null));
+        Assert.Equal(AttendanceKind.Exit, policy.ResolveScan(entry.AddHours(8), entry, null));
+    }
+
+    [Theory]
+    [InlineData("2026-10-06T00:52:00Z", true, false, false, AttendancePresenceStatus.InShift)]
+    [InlineData("2026-10-06T00:52:00Z", false, false, false, AttendancePresenceStatus.AbsentUnexcused)]
+    [InlineData("2026-10-06T00:52:00Z", false, false, true, AttendancePresenceStatus.AbsentExcused)]
+    [InlineData("2026-10-06T11:00:00Z", false, false, false, AttendancePresenceStatus.OffShift)]
+    public void Presence_status_matches_shift_and_attendance(
+        string timestamp, bool hasEntry, bool hasExit, bool approvedLeave,
+        AttendancePresenceStatus expected)
+    {
+        var now = DateTimeOffset.Parse(timestamp);
+        Assert.Equal(expected, policy.PresenceStatus(
+            now,
+            hasEntry ? now.AddMinutes(-10) : null,
+            hasExit ? now.AddMinutes(-5) : null,
+            approvedLeave));
+    }
 }

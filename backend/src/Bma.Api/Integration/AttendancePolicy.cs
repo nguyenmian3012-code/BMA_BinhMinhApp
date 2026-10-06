@@ -15,11 +15,13 @@ public sealed class AttendanceOptions
     public string BreakEnd { get; set; } = "13:00";
     public int EarlyEntryMinutes { get; set; } = 30;
     public int LateExitMinutes { get; set; } = 20;
+    public int DuplicateScanMinutes { get; set; } = 5;
     public int MissingPunchPercent { get; set; } = 50;
     public int ReconciliationSeconds { get; set; } = 60;
 }
 
 public enum AttendanceScanWindow { Entry, Exit, Break, OutsideShift, NonWorkingDay }
+public enum AttendancePresenceStatus { InShift, OffShift, AbsentUnexcused, AbsentExcused }
 
 public sealed record AttendanceScanDecision(
     DateOnly WorkDate,
@@ -56,7 +58,8 @@ public sealed class AttendancePolicy
         breakEnd = ParseTime(Options.BreakEnd, nameof(Options.BreakEnd));
         if (!(shiftStart < breakStart && breakStart < breakEnd && breakEnd < shiftEnd))
             throw new InvalidOperationException("Attendance shift must be same-day and contain its unpaid break.");
-        if (Options.EarlyEntryMinutes is < 0 or > 240 || Options.LateExitMinutes is < 0 or > 240)
+        if (Options.EarlyEntryMinutes is < 0 or > 240 || Options.LateExitMinutes is < 0 or > 240 ||
+            Options.DuplicateScanMinutes is < 0 or > 60)
             throw new InvalidOperationException("Attendance early/late windows must be between 0 and 240 minutes.");
         if (Options.MissingPunchPercent is < 0 or > 100)
             throw new InvalidOperationException("Attendance missing punch percent must be between 0 and 100.");
@@ -102,6 +105,44 @@ public sealed class AttendancePolicy
         if (unpaidEnd > unpaidStart) credited -= unpaidEnd - unpaidStart;
         return Math.Clamp((int)Math.Floor(credited.TotalMinutes), 0, ScheduledMinutes);
     }
+
+    public int CalculateLateMinutes(DateOnly workDate, DateTimeOffset entryAt) =>
+        CalculateCreditedMinutes(workDate, ToUtc(workDate, shiftStart), entryAt);
+
+    public AttendanceKind? ResolveScan(
+        DateTimeOffset occurredAt,
+        DateTimeOffset? entryAt,
+        DateTimeOffset? exitAt)
+    {
+        if (exitAt is not null) return null;
+        if (entryAt is null) return AttendanceKind.Entry;
+        if (occurredAt < entryAt.Value.AddMinutes(Options.DuplicateScanMinutes)) return null;
+        return AttendanceKind.Exit;
+    }
+
+    public AttendancePresenceStatus PresenceStatus(
+        DateTimeOffset now,
+        DateTimeOffset? entryAt,
+        DateTimeOffset? exitAt,
+        bool hasApprovedLeave = false)
+    {
+        var local = TimeZoneInfo.ConvertTime(now, timeZone);
+        var time = TimeOnly.FromDateTime(local.DateTime);
+        if (!WorkDays.Contains(local.DayOfWeek) || time < shiftStart || time >= shiftEnd)
+            return AttendancePresenceStatus.OffShift;
+        if (hasApprovedLeave) return AttendancePresenceStatus.AbsentExcused;
+        return entryAt <= now && (exitAt is null || exitAt > now)
+            ? AttendancePresenceStatus.InShift
+            : AttendancePresenceStatus.AbsentUnexcused;
+    }
+
+    public DateOnly WorkDate(DateTimeOffset value)
+    {
+        var local = TimeZoneInfo.ConvertTime(value, timeZone);
+        return DateOnly.FromDateTime(local.DateTime);
+    }
+
+    public static string Duration(int minutes) => $"{minutes / 60:D2}:{minutes % 60:D2}";
 
     public bool CanFinalizeMissingExit(DateOnly workDate, DateTimeOffset now) =>
         now >= ToUtc(workDate, lastExit).AddMinutes(10);

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Bma.Data;
 using Bma.Domain;
+using Bma.Integration;
 using Bma.Modules;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,15 +11,35 @@ using Microsoft.EntityFrameworkCore;
 namespace Bma.Pages.Admin.Employees;
 
 [Authorize(Policy = "PeopleEditor")]
-public sealed class IndexModel(BmaDbContext db, AuditWriter audit) : PageModel
+public sealed class IndexModel(BmaDbContext db, AuditWriter audit, AttendancePolicy attendance) : PageModel
 {
-    public List<EmployeeProfile> Items { get; private set; } = [];
+    public List<EmployeeItem> Items { get; private set; } = [];
 
     [TempData] public string? Notice { get; set; }
     [TempData] public string? ErrorMessage { get; set; }
 
-    public async Task OnGetAsync(CancellationToken ct) => Items = await db.EmployeeProfiles
-        .AsNoTracking().OrderBy(x => x.EmployeeCode).Take(500).ToListAsync(ct);
+    public async Task OnGetAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var today = attendance.WorkDate(now);
+        var profiles = await db.EmployeeProfiles.AsNoTracking()
+            .OrderBy(x => x.EmployeeCode).Take(500).ToListAsync(ct);
+        var sessions = await db.AttendanceSessions.AsNoTracking()
+            .Where(x => x.WorkDate == today).ToDictionaryAsync(x => x.EmployeeId, ct);
+        Items = profiles.Select(profile =>
+        {
+            sessions.TryGetValue(profile.EmployeeCode, out var session);
+            var approvedLeave = session is
+                { Status: AttendanceSessionStatus.Approved, ReviewReason: "APPROVED_LEAVE" };
+            var presence = attendance.PresenceStatus(
+                now, session?.EntryAt, session?.ExitAt, approvedLeave);
+            var lateMinutes = session?.EntryAt is null
+                ? 0
+                : attendance.CalculateLateMinutes(today, session.EntryAt.Value);
+            return new EmployeeItem(profile, presence.ToString().ToUpperInvariant(),
+                AttendancePolicy.Duration(lateMinutes));
+        }).ToList();
+    }
 
     public async Task<IActionResult> OnPostCreateAsync(
         string code, string fullName, string? department, string? position, DateOnly? hiredOn,
@@ -95,4 +116,18 @@ public sealed class IndexModel(BmaDbContext db, AuditWriter audit) : PageModel
 
     private Guid Actor() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    public sealed record EmployeeItem(
+        EmployeeProfile Profile,
+        string PresenceStatus,
+        string LateDuration)
+    {
+        public Guid Id => Profile.Id;
+        public string EmployeeCode => Profile.EmployeeCode;
+        public string FullName => Profile.FullName;
+        public string? Department => Profile.Department;
+        public string? Position => Profile.Position;
+        public DateOnly? HiredOn => Profile.HiredOn;
+        public bool IsActive => Profile.IsActive;
+    }
 }

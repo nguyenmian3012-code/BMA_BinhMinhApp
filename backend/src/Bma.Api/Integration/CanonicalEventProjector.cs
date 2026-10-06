@@ -195,25 +195,18 @@ public sealed class CanonicalEventProjector(
     {
         var employee = RequiredString(payload, "employee_id");
         var decision = attendance.Classify(raw.OccurredAt);
-        if (decision.Window is AttendanceScanWindow.Break or
-            AttendanceScanWindow.OutsideShift or AttendanceScanWindow.NonWorkingDay)
+        var session = await db.AttendanceSessions.SingleOrDefaultAsync(
+            x => x.EmployeeId == employee && x.WorkDate == decision.WorkDate, ct);
+        var kind = attendance.ResolveScan(raw.OccurredAt, session?.EntryAt, session?.ExitAt);
+        if (kind is null)
         {
-            AddAudit("ATTENDANCE_SCAN_IGNORED", raw,
-                new { employee, decision.WorkDate, window = decision.Window.ToString() });
+            AddAudit("ATTENDANCE_SCAN_DUPLICATE", raw,
+                new { employee, decision.WorkDate, session_id = session?.Id });
             return;
         }
 
-        var session = await db.AttendanceSessions.SingleOrDefaultAsync(
-            x => x.EmployeeId == employee && x.WorkDate == decision.WorkDate, ct);
-        if (decision.Window == AttendanceScanWindow.Entry)
+        if (kind == AttendanceKind.Entry)
         {
-            if (session is not null)
-            {
-                AddAudit("ATTENDANCE_SCAN_DUPLICATE", raw,
-                    new { employee, decision.WorkDate, resolved_kind = "ENTRY", session.Id });
-                return;
-            }
-
             AddAttendanceEvent(raw, payload, employee, AttendanceKind.Entry);
             db.AttendanceSessions.Add(new AttendanceSession
             {
@@ -227,40 +220,14 @@ public sealed class CanonicalEventProjector(
             return;
         }
 
-        if (session is null)
-        {
-            AddAttendanceEvent(raw, payload, employee, AttendanceKind.Exit);
-            db.AttendanceSessions.Add(new AttendanceSession
-            {
-                EmployeeId = employee,
-                ExitAt = raw.OccurredAt,
-                ExitEventId = raw.EventId,
-                WorkDate = decision.WorkDate,
-                ShiftCode = attendance.Options.ShiftCode,
-                CreditedMinutes = attendance.MissingPunchMinutes,
-                Status = AttendanceSessionStatus.NeedsReview,
-                ReviewReason = "MISSING_ENTRY"
-            });
-            AddAudit("ATTENDANCE_NEEDS_REVIEW", raw,
-                new { employee, decision.WorkDate, reason = "MISSING_ENTRY" });
-            return;
-        }
-
-        if (session.EntryAt is null || session.ExitAt is not null ||
-            session.Status != AttendanceSessionStatus.Provisional)
-        {
-            AddAudit("ATTENDANCE_SCAN_DUPLICATE", raw,
-                new { employee, decision.WorkDate, resolved_kind = "EXIT", session.Id });
-            return;
-        }
-
+        // ResolveScan only returns Exit for an open session with an entry.
         AddAttendanceEvent(raw, payload, employee, AttendanceKind.Exit);
-        session.ExitAt = raw.OccurredAt;
+        session!.ExitAt = raw.OccurredAt;
         session.ExitEventId = raw.EventId;
         session.Status = AttendanceSessionStatus.Confirmed;
         session.ReviewReason = null;
         session.CreditedMinutes = attendance.CalculateCreditedMinutes(
-            decision.WorkDate, session.EntryAt.Value, raw.OccurredAt);
+            decision.WorkDate, session.EntryAt!.Value, raw.OccurredAt);
     }
 
     private void AddAttendanceEvent(RawIntegrationEvent raw, JsonElement payload,

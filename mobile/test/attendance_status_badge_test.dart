@@ -63,6 +63,39 @@ void main() {
     expect(find.text('Chưa có dữ liệu chấm công.'), findsOneWidget);
   });
 
+  testWidgets('attendance shows presence and late duration', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AttendanceContent(
+              data: {
+                'presence_status': 'INSHIFT',
+                'month': '2026-10',
+                'monthly_total_minutes': 0,
+                'items': [
+                  {
+                    'work_date': '2026-10-06',
+                    'entry_at': '2026-10-06T07:45:00+07:00',
+                    'exit_at': null,
+                    'credited_minutes': 0,
+                    'status': 'PROVISIONAL',
+                    'late_minutes': 45,
+                    'late_duration': '00:45',
+                  },
+                ],
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Đang trong ca'), findsOneWidget);
+    expect(find.text('Đi trễ: 00:45'), findsOneWidget);
+    expect(find.bySemanticsLabel('Đang trong ca'), findsOneWidget);
+  });
+
   testWidgets('attendance content supports 1.3 text scale', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
