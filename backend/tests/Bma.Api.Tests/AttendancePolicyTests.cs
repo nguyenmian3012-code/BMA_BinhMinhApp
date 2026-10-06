@@ -1,3 +1,4 @@
+using Bma.Domain;
 using Bma.Integration;
 using Microsoft.Extensions.Options;
 

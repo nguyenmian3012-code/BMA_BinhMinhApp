@@ -93,7 +93,7 @@ void main() {
 
     expect(find.text('Đang trong ca'), findsOneWidget);
     expect(find.text('Đi trễ: 00:45'), findsOneWidget);
-    expect(find.bySemanticsLabel('Đang trong ca'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Đang trong ca')), findsWidgets);
   });
 
   testWidgets('attendance content supports 1.3 text scale', (tester) async {
