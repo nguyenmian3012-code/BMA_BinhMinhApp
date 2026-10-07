@@ -21,13 +21,15 @@
 <section class="card table-wrap">
     <h2>Danh sách nhân viên</h2>
     <table>
-        <thead><tr><th>Mã NV</th><th>Họ tên</th><th>Bộ phận</th><th>Chức vụ</th><th>Ngày vào làm</th><th>Đang làm</th><th>Lưu</th></tr></thead>
+        <thead><tr><th>Mã NV</th><th>Họ tên</th><th>Trạng thái</th><th>Đi trễ</th><th>Bộ phận</th><th>Chức vụ</th><th>Ngày vào làm</th><th>Đang làm</th><th>Lưu</th></tr></thead>
         <tbody>
         @foreach (var item in Model.Items)
         {
             var formId = "employee-" + item.Id;
             <tr>
                 <td>@item.EmployeeCode</td><td>@item.FullName</td>
+                <td><span class="presence @item.PresenceStatus.ToLowerInvariant()"><i></i>@(item.PresenceStatus switch { "INSHIFT" => "Đang trong ca", "ABSENTEXCUSED" => "Vắng có phép", "ABSENTUNEXCUSED" => "Vắng không phép", _ => "Ngoài ca" })</span></td>
+                <td>@item.LateDuration</td>
                 <td><input form="@formId" name="department" value="@item.Department" maxlength="120" aria-label="Bộ phận @item.EmployeeCode" /></td>
                 <td><input form="@formId" name="position" value="@item.Position" maxlength="120" aria-label="Chức vụ @item.EmployeeCode" /></td>
                 <td><input form="@formId" name="hiredOn" type="date" value="@(item.HiredOn?.ToString("yyyy-MM-dd"))" aria-label="Ngày vào làm @item.EmployeeCode" /></td>

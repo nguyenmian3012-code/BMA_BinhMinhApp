@@ -1,12 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 
 class CachedView extends StatefulWidget {
-  const CachedView({required this.load, required this.builder, super.key});
+  const CachedView({
+    required this.load,
+    required this.builder,
+    this.refreshInterval,
+    super.key,
+  });
 
   final Future<CachedResponse> Function() load;
   final List<Widget> Function(BuildContext context, Map<String, dynamic> data) builder;
+  final Duration? refreshInterval;
 
   @override
   State<CachedView> createState() => _CachedViewState();
@@ -14,6 +22,30 @@ class CachedView extends StatefulWidget {
 
 class _CachedViewState extends State<CachedView> {
   late Future<CachedResponse> _future = widget.load();
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.refreshInterval case final interval?) {
+      _timer = Timer.periodic(interval, (_) => _refreshSilently());
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshSilently() async {
+    try {
+      final response = await widget.load();
+      if (mounted) setState(() => _future = Future.value(response));
+    } on Object {
+      // Keep visible data; pull-to-refresh still exposes errors.
+    }
+  }
 
   Future<void> _reload() async {
     setState(() => _future = widget.load());

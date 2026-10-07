@@ -72,10 +72,11 @@ public static class ApiEndpoints
                     monthly_total_hours = 0,
                     monthly_remaining_minutes = 0
                 });
-            var sessions = await db.AttendanceSessions.AsNoTracking()
+            var sessionRows = await db.AttendanceSessions.AsNoTracking()
                 .Where(x => x.EmployeeId == employeeCode && x.WorkDate != null)
                 .OrderByDescending(x => x.WorkDate)
-                .Take(5).Select(x => new
+                .Take(5).ToListAsync(ct);
+            var sessions = sessionRows.Select(x => new
                 {
                     x.Id,
                     x.WorkDate,
@@ -87,8 +88,19 @@ public static class ApiEndpoints
                         ? "NEEDS_REVIEW"
                         : x.Status.ToString().ToUpperInvariant(),
                     x.ReviewReason,
-                    payroll_approved = x.ApprovedAt != null
-                }).ToListAsync(ct);
+                    payroll_approved = x.ApprovedAt != null,
+                    late_minutes = x.EntryAt is null ? 0 :
+                        attendance.CalculateLateMinutes(x.WorkDate!.Value, x.EntryAt.Value),
+                    late_duration = AttendancePolicy.Duration(x.EntryAt is null ? 0 :
+                        attendance.CalculateLateMinutes(x.WorkDate!.Value, x.EntryAt.Value))
+                }).ToList();
+            var now = DateTimeOffset.UtcNow;
+            var today = attendance.WorkDate(now);
+            var todaySession = sessionRows.SingleOrDefault(x => x.WorkDate == today);
+            var approvedLeave = todaySession is
+                { Status: AttendanceSessionStatus.Approved, ReviewReason: "APPROVED_LEAVE" };
+            var presence = attendance.PresenceStatus(
+                now, todaySession?.EntryAt, todaySession?.ExitAt, approvedLeave);
             var monthlyTotal = await db.AttendanceSessions.AsNoTracking()
                 .Where(x => x.EmployeeId == employeeCode && x.WorkDate != null &&
                             x.WorkDate.Value >= month.Start && x.WorkDate.Value < month.End)
@@ -99,6 +111,7 @@ public static class ApiEndpoints
                 items = sessions,
                 employee_code = employeeCode,
                 shift_name = attendance.Options.ShiftName,
+                presence_status = presence.ToString().ToUpperInvariant(),
                 month = month.Key,
                 monthly_total_minutes = monthlyTotal,
                 monthly_total_hours = monthlyTotal / 60,
